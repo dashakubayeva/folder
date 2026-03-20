@@ -2,14 +2,15 @@ import fs from 'fs/promises';
 import path from 'path';
 import { Scenario, RunResult } from '@/types';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+export const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
 const SCENARIOS_FILE = path.join(DATA_DIR, 'scenarios.json');
 const RESULTS_DIR = path.join(DATA_DIR, 'results');
+export const SCREENSHOTS_DIR = path.join(DATA_DIR, 'screenshots');
 
 async function ensureDirs() {
   await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.mkdir(RESULTS_DIR, { recursive: true });
-  await fs.mkdir(path.join(process.cwd(), 'public', 'screenshots'), { recursive: true });
+  await fs.mkdir(SCREENSHOTS_DIR, { recursive: true });
 }
 
 async function readScenarios(): Promise<Scenario[]> {

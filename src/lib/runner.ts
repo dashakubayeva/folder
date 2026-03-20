@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { Scenario, RunResult, StepResult } from '@/types';
+import { SCREENSHOTS_DIR } from '@/lib/storage';
 
 export async function runScenario(scenario: Scenario): Promise<RunResult> {
   const runId = uuidv4();
@@ -76,10 +77,9 @@ export async function runScenario(scenario: Scenario): Promise<RunResult> {
 
         case 'screenshot': {
           const filename = `${runId}-${step.id}.png`;
-          const screenshotDir = path.join(process.cwd(), 'public', 'screenshots');
-          const filePath = path.join(screenshotDir, filename);
+          const filePath = path.join(SCREENSHOTS_DIR, filename);
           await page.screenshot({ path: filePath, fullPage: false });
-          screenshotPath = `/screenshots/${filename}`;
+          screenshotPath = `/api/screenshots/${filename}`;
           break;
         }
       }
@@ -93,10 +93,9 @@ export async function runScenario(scenario: Scenario): Promise<RunResult> {
       // Capture failure screenshot
       try {
         const filename = `${runId}-${step.id}-fail.png`;
-        const screenshotDir = path.join(process.cwd(), 'public', 'screenshots');
-        const filePath = path.join(screenshotDir, filename);
+        const filePath = path.join(SCREENSHOTS_DIR, filename);
         await page.screenshot({ path: filePath, fullPage: false });
-        screenshotPath = `/screenshots/${filename}`;
+        screenshotPath = `/api/screenshots/${filename}`;
       } catch {
         // ignore screenshot errors
       }
