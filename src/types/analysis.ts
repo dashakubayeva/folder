@@ -23,11 +23,12 @@ export interface AxeViolation {
 }
 
 export interface NavigationAnalysis {
-  screenshotPath: string;
-  score: number;        // 1-10
-  notes: string;        // one-sentence overall summary
-  issues: string[];     // 2-5 specific problems
-  recommendations: string[]; // 2-5 concrete improvements
+  screenshotPath: string;           // desktop nav (1280px)
+  mobileScreenshotPath?: string;    // mobile nav (375px)
+  score: number;                    // 1-10
+  notes: string;                    // one-sentence overall summary
+  issues: string[];                 // 2-5 specific problems
+  recommendations: string[];        // 2-5 concrete improvements
 }
 
 export interface AnalysisResult {

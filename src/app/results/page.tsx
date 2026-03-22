@@ -277,16 +277,24 @@ export default function ResultsPage() {
 
           <p className="text-sm text-slate-500 italic">{navigationAnalysis.notes}</p>
 
-          {/* Nav screenshot */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-50 border-b border-slate-100">
-              <div className="w-2 h-2 rounded-full bg-red-400" />
-              <div className="w-2 h-2 rounded-full bg-amber-400" />
-              <div className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="text-xs text-slate-400 ml-2">Navigation bar</span>
+          {/* Nav screenshots — desktop + mobile side by side */}
+          <div className={`grid gap-3 ${navigationAnalysis.mobileScreenshotPath ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+            <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-xs text-slate-400 font-medium">
+                Desktop (1280px)
+              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={navigationAnalysis.screenshotPath} alt="Desktop navigation" className="w-full" />
             </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={navigationAnalysis.screenshotPath} alt="Navigation bar screenshot" className="w-full" />
+            {navigationAnalysis.mobileScreenshotPath && (
+              <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-xs text-slate-400 font-medium">
+                  Mobile (375px)
+                </div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={navigationAnalysis.mobileScreenshotPath} alt="Mobile navigation" className="w-full" />
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

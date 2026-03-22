@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
   // ── Step 1: Screenshot + HTML + axe-core via Playwright ──────────────────
   let screenshotBuffer: Buffer;
   let navScreenshotBuffer: Buffer | null = null;
+  let navMobileBuffer: Buffer | null = null;
   let html: string;
   let axeViolations: AxeViolation[] = [];
   const browser = await chromium.launch({
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
       console.error('axe-core failed:', err);
     }
 
-    // Capture focused nav screenshot
+    // Capture focused desktop nav screenshot (1280px)
     try {
       const navEl = page.locator('header, nav, [role="navigation"]').first();
       const box = await navEl.boundingBox();
@@ -90,6 +91,25 @@ export async function POST(req: NextRequest) {
       }
     } catch (err) {
       console.error('Nav screenshot failed:', err);
+    }
+
+    // Capture mobile nav screenshot (375px)
+    try {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.waitForTimeout(500); // let responsive CSS reflow
+      const mobileNavEl = page.locator('header, nav, [role="navigation"]').first();
+      const mobileBox = await mobileNavEl.boundingBox();
+      if (mobileBox) {
+        navMobileBuffer = Buffer.from(await page.screenshot({
+          clip: { x: 0, y: mobileBox.y, width: 375, height: Math.min(mobileBox.height, 200) },
+        }));
+      } else {
+        navMobileBuffer = Buffer.from(await page.screenshot({
+          clip: { x: 0, y: 0, width: 375, height: 120 },
+        }));
+      }
+    } catch (err) {
+      console.error('Mobile nav screenshot failed:', err);
     }
   } finally {
     await browser.close();
@@ -106,6 +126,13 @@ export async function POST(req: NextRequest) {
     const navFilename = `ux-nav-${id}.png`;
     await fs.writeFile(path.join(SCREENSHOTS_DIR, navFilename), navScreenshotBuffer);
     navScreenshotPath = `/api/screenshots/${navFilename}`;
+  }
+
+  let navMobileScreenshotPath: string | null = null;
+  if (navMobileBuffer) {
+    const navMobileFilename = `ux-nav-mobile-${id}.png`;
+    await fs.writeFile(path.join(SCREENSHOTS_DIR, navMobileFilename), navMobileBuffer);
+    navMobileScreenshotPath = `/api/screenshots/${navMobileFilename}`;
   }
 
   // ── Step 2: Lighthouse audit ──────────────────────────────────────────────
@@ -222,26 +249,42 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
   // ── Step 4: Claude navigation analysis ───────────────────────────────────
   let navigationAnalysis: NavigationAnalysis | undefined;
   if (navScreenshotBuffer && navScreenshotPath) {
-    const navBase64 = navScreenshotBuffer.toString('base64');
-    const navPrompt = `You are a senior UX/navigation expert. Analyze this navigation bar screenshot.
-Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
+    const navPrompt = `You are a senior UX/navigation expert. You are given ${navMobileBuffer ? 'TWO screenshots: (1) desktop navigation at 1280px wide, (2) mobile navigation at 375px wide' : 'a desktop navigation screenshot at 1280px wide'}.
+
+Score the navigation 1-10 based on these specific criteria:
+- Link visibility: are nav links readable with sufficient contrast and legible font size?
+- Menu structure: 4-7 top-level items is ideal; 8+ causes overwhelm, 1-3 may lack structure
+- Home/logo: is there a clear logo or home link in the top-left area?
+- CTA prominence: is there a visually distinct call-to-action button (different color/style) in the nav?
+- Visual hierarchy: can users tell what is primary vs secondary navigation?
+- Active/current state: does the nav visually indicate where the user currently is?
+- Mobile menu: is there a visible hamburger icon or mobile menu trigger at 375px?
+
+Scoring guide: 9-10 = 7/7 criteria met, 7-8 = 5-6 met, 5-6 = 3-4 met, 3-4 = 1-2 met, 1-2 = none met.
+
+Return ONLY valid JSON (no markdown, no explanation):
 {
   "score": <1-10>,
-  "notes": "<one-sentence overall assessment of the navigation>",
-  "issues": ["2-5 specific navigation problems visible in the screenshot"],
-  "recommendations": ["2-5 concrete, actionable improvements for this navigation"]
+  "notes": "<one sentence summarizing the overall navigation quality>",
+  "issues": ["2-5 specific problems referencing the criteria above"],
+  "recommendations": ["2-5 concrete actionable improvements"]
 }`;
+
     try {
+      type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: 'image/png'; data: string } };
+      type TextBlock = { type: 'text'; text: string };
+      const content: (ImageBlock | TextBlock)[] = [
+        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: navScreenshotBuffer.toString('base64') } },
+      ];
+      if (navMobileBuffer) {
+        content.push({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: navMobileBuffer.toString('base64') } });
+      }
+      content.push({ type: 'text', text: navPrompt });
+
       const navResponse = await client.messages.create({
         model: 'claude-opus-4-6',
         max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: navBase64 } },
-            { type: 'text', text: navPrompt },
-          ],
-        }],
+        messages: [{ role: 'user', content }],
       });
       const navTextBlock = navResponse.content.find((b) => b.type === 'text');
       const navRaw = navTextBlock?.type === 'text' ? navTextBlock.text : '{}';
@@ -250,6 +293,7 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
       if (navParsed.score) {
         navigationAnalysis = {
           screenshotPath: navScreenshotPath,
+          ...(navMobileScreenshotPath && { mobileScreenshotPath: navMobileScreenshotPath }),
           score: navParsed.score,
           notes: navParsed.notes ?? '',
           issues: Array.isArray(navParsed.issues) ? navParsed.issues : [],
