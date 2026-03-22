@@ -15,10 +15,18 @@ export interface QualitativeCategory {
   notes: string;
 }
 
+export interface AxeViolation {
+  id: string;
+  description: string;
+  impact: 'critical' | 'serious' | 'moderate' | 'minor';
+  nodes: number; // how many elements affected
+}
+
 export interface AnalysisResult {
   url: string;
   screenshotPath: string;
   lighthouse: LighthouseMetrics;
+  axeViolations: AxeViolation[];
   good: string[];
   bad: string[];
   qualitative: {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { chromium } from 'playwright';
+import AxeBuilder from '@axe-core/playwright';
 import { launch } from 'chrome-launcher';
 import lighthouse from 'lighthouse';
 import Anthropic from '@anthropic-ai/sdk';
@@ -7,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
 import { SCREENSHOTS_DIR } from '@/lib/storage';
-import { AnalysisResult, LighthouseMetrics } from '@/types/analysis';
+import { AnalysisResult, AxeViolation, LighthouseMetrics } from '@/types/analysis';
 
 const client = new Anthropic();
 
@@ -43,9 +44,10 @@ export async function POST(req: NextRequest) {
 
   const id = uuidv4();
 
-  // ── Step 1: Screenshot + HTML via Playwright ──────────────────────────────
+  // ── Step 1: Screenshot + HTML + axe-core via Playwright ──────────────────
   let screenshotBuffer: Buffer;
   let html: string;
+  let axeViolations: AxeViolation[] = [];
   const browser = await chromium.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
@@ -58,6 +60,19 @@ export async function POST(req: NextRequest) {
     await page.waitForTimeout(2000);
     screenshotBuffer = Buffer.from(await page.screenshot({ fullPage: false }));
     html = (await page.content()).slice(0, 40000);
+
+    // Run axe-core accessibility scan
+    try {
+      const axeResults = await new AxeBuilder({ page }).analyze();
+      axeViolations = axeResults.violations.map((v) => ({
+        id: v.id,
+        description: v.description,
+        impact: (v.impact ?? 'moderate') as AxeViolation['impact'],
+        nodes: v.nodes.length,
+      }));
+    } catch (err) {
+      console.error('axe-core failed:', err);
+    }
   } finally {
     await browser.close();
   }
@@ -185,6 +200,7 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
     url,
     screenshotPath,
     lighthouse: lighthouseData,
+    axeViolations,
     good: claudeGood,
     bad: claudeBad,
     qualitative: claudeQualitative,

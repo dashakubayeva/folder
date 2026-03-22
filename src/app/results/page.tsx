@@ -103,7 +103,7 @@ export default function ResultsPage() {
     );
   }
 
-  const { url, screenshotPath, lighthouse, good, bad, qualitative, analyzedAt } = result;
+  const { url, screenshotPath, lighthouse, axeViolations, good, bad, qualitative, analyzedAt } = result;
   const hostname = (() => { try { return new URL(url).hostname; } catch { return url; } })();
 
   return (
@@ -212,6 +212,39 @@ export default function ResultsPage() {
               </ul>
             </div>
           </div>
+
+          {/* Axe-core accessibility violations */}
+          {axeViolations && axeViolations.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+                Accessibility Violations
+                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-normal">
+                  {axeViolations.length} found
+                </span>
+              </h2>
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                {axeViolations
+                  .sort((a, b) => {
+                    const order = { critical: 0, serious: 1, moderate: 2, minor: 3 };
+                    return order[a.impact] - order[b.impact];
+                  })
+                  .map((v) => (
+                    <div key={v.id} className="flex items-start gap-3 text-sm">
+                      <span className={`mt-0.5 flex-shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded ${
+                        v.impact === 'critical' ? 'bg-red-100 text-red-700' :
+                        v.impact === 'serious' ? 'bg-orange-100 text-orange-700' :
+                        v.impact === 'moderate' ? 'bg-amber-100 text-amber-700' :
+                        'bg-slate-100 text-slate-600'
+                      }`}>
+                        {v.impact}
+                      </span>
+                      <span className="text-slate-700 flex-1">{v.description}</span>
+                      <span className="text-slate-400 text-xs flex-shrink-0">{v.nodes}×</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
 
           {/* Qualitative UX */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
