@@ -18,14 +18,23 @@ export default function HomePage() {
   const [url, setUrl] = useState('');
   const [pageTypeHint, setPageTypeHint] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [stepLabel, setStepLabel] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!loading) return;
+    if (!loading) { setProgress(0); setStepLabel(''); return; }
+    let p = 0;
     const interval = setInterval(() => {
-      setLoadingStep((s) => (s + 1) % LOADING_STEPS.length);
-    }, 4000);
+      p = p >= 88 ? p + 0.2 : p >= 70 ? p + 0.8 : p + 1.8;
+      if (p > 95) p = 95;
+      setProgress(p);
+      const stepIdx = Math.min(
+        Math.floor((p / 95) * (LOADING_STEPS.length - 1)),
+        LOADING_STEPS.length - 1
+      );
+      setStepLabel(LOADING_STEPS[stepIdx]);
+    }, 500);
     return () => clearInterval(interval);
   }, [loading]);
 
@@ -40,7 +49,7 @@ export default function HomePage() {
     }
 
     setLoading(true);
-    setLoadingStep(0);
+    setProgress(0);
 
     try {
       const res = await fetch('/api/analyze', {
@@ -56,7 +65,8 @@ export default function HomePage() {
 
       const result: AnalysisResult = await res.json();
       sessionStorage.setItem('ux-analysis', JSON.stringify(result));
-      router.push('/results');
+      setProgress(100);
+      setTimeout(() => router.push('/results'), 300);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed. Please try again.');
       setLoading(false);
@@ -134,8 +144,17 @@ export default function HomePage() {
         {/* Loading progress */}
         {loading && (
           <div className="mt-5 animate-fade-in">
-            <p className="text-sm text-violet-600 font-medium">{LOADING_STEPS[loadingStep]}</p>
-            <p className="text-xs text-slate-400 mt-1">This usually takes 30–60 seconds</p>
+            <div className="flex justify-between items-center mb-1.5">
+              <p className="text-sm text-violet-600 font-medium">{stepLabel}</p>
+              <p className="text-xs text-slate-400">{Math.round(progress)}%</p>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-2">
+              <div
+                className="bg-violet-600 h-2 rounded-full transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="text-xs text-slate-400 mt-2">This usually takes 30–60 seconds</p>
           </div>
         )}
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AnalysisResult, AttentionZone } from '@/types/analysis';
+import { AnalysisResult, AttentionZone, PrioritizedItem } from '@/types/analysis';
 
 // ── Helper: score → status word ──────────────────────────────────────────────
 function scoreStatus(pct: number): { word: string; color: string } {
@@ -152,10 +152,21 @@ function HeatmapOverlay({ zones, imgEl }: { zones: AttentionZone[]; imgEl: HTMLI
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+function PriorityBadge({ priority }: { priority: PrioritizedItem['priority'] }) {
+  if (priority === 'critical') return (
+    <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 bg-red-100 px-1.5 py-0.5 rounded flex-shrink-0">
+      <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />Critical
+    </span>
+  );
+  if (priority === 'high') return <span className="w-2 h-2 rounded-full bg-orange-400 inline-block flex-shrink-0 mt-1.5" />;
+  return <span className="w-2 h-2 rounded-full bg-slate-300 inline-block flex-shrink-0 mt-1.5" />;
+}
+
 export default function ResultsPage() {
   const router = useRouter();
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [screenshotView, setScreenshotView] = useState<'desktop' | 'mobile'>('desktop');
   const screenshotImgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
@@ -238,8 +249,14 @@ export default function ResultsPage() {
   return (
     <div className="animate-fade-in space-y-8">
 
+      {/* ── Print-only header ── */}
+      <div className="hidden print:block mb-4 pb-4 border-b border-slate-200">
+        <h1 className="text-xl font-bold text-slate-900">UX Analysis Report</h1>
+        <p className="text-sm text-slate-500">{url} · {new Date(analyzedAt).toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+      </div>
+
       {/* ── Header ── */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="flex items-start justify-between gap-4 flex-wrap print:hidden">
         <div>
           <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -259,27 +276,49 @@ export default function ResultsPage() {
             )}
           </div>
         </div>
-        <button onClick={() => router.push('/')}
-          className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          Analyze another site
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => window.print()}
+            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Download Report
+          </button>
+          <button onClick={() => router.push('/')}
+            className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            Analyze another site
+          </button>
+        </div>
       </div>
 
       {/* ── Main grid ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 print:block">
 
         {/* Left: screenshot */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-4 print:hidden">
+          {/* Desktop / Mobile tab switcher */}
+          {result.mobileScreenshotPath && (
+            <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+              <button onClick={() => setScreenshotView('desktop')}
+                className={`flex-1 text-xs font-medium py-1.5 rounded-lg transition-colors ${screenshotView === 'desktop' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                🖥 Desktop
+              </button>
+              <button onClick={() => setScreenshotView('mobile')}
+                className={`flex-1 text-xs font-medium py-1.5 rounded-lg transition-colors ${screenshotView === 'mobile' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                📱 Mobile
+              </button>
+            </div>
+          )}
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="flex items-center gap-1.5 px-4 py-3 bg-slate-50 border-b border-slate-100">
               <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
               <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
               <span className="text-xs text-slate-400 ml-2 truncate flex-1">{url}</span>
-              {heatmap && (
+              {heatmap && screenshotView === 'desktop' && (
                 <button onClick={() => setShowHeatmap(s => !s)}
                   className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-md font-medium transition-colors ${showHeatmap ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>
                   🔥 {showHeatmap ? 'Hide' : 'Attention map'}
@@ -288,11 +327,16 @@ export default function ResultsPage() {
             </div>
             <div className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img ref={screenshotImgRef} src={screenshotPath} alt={`Screenshot of ${hostname}`} className="w-full" />
-              {showHeatmap && heatmap && <HeatmapOverlay zones={heatmap.zones} imgEl={screenshotImgRef.current} />}
+              <img
+                ref={screenshotImgRef}
+                src={screenshotView === 'mobile' && result.mobileScreenshotPath ? result.mobileScreenshotPath : screenshotPath}
+                alt={`${screenshotView === 'mobile' ? 'Mobile' : 'Desktop'} screenshot of ${hostname}`}
+                className="w-full"
+              />
+              {showHeatmap && heatmap && screenshotView === 'desktop' && <HeatmapOverlay zones={heatmap.zones} imgEl={screenshotImgRef.current} />}
             </div>
           </div>
-          {showHeatmap && heatmap && (
+          {showHeatmap && heatmap && screenshotView === 'desktop' && (
             <div className="px-3 py-2.5 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-800">
               <span className="font-semibold">AI Predicted Attention</span> — not real user data.
               Based on visual hierarchy, F-pattern reading, and element prominence.
@@ -322,7 +366,7 @@ export default function ResultsPage() {
           </div>
 
           {/* 2. What's working / Needs improvement */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:break-inside-avoid">
             <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
               <h2 className="text-sm font-semibold text-emerald-800 mb-3 flex items-center gap-1.5">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -334,7 +378,7 @@ export default function ResultsPage() {
                 {good.map((item, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-emerald-900">
                     <span className="text-emerald-500 mt-0.5 flex-shrink-0">✓</span>
-                    {item}
+                    <span className="flex-1">{item.text}</span>
                   </li>
                 ))}
                 {good.length === 0 && <li className="text-sm text-emerald-600 italic">No data</li>}
@@ -350,8 +394,8 @@ export default function ResultsPage() {
               <ul className="space-y-2">
                 {bad.map((item, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-red-900">
-                    <span className="text-red-400 mt-0.5 flex-shrink-0">✗</span>
-                    {item}
+                    <PriorityBadge priority={item.priority} />
+                    <span className="flex-1">{item.text}</span>
                   </li>
                 ))}
                 {bad.length === 0 && <li className="text-sm text-red-600 italic">No data</li>}
@@ -360,7 +404,7 @@ export default function ResultsPage() {
           </div>
 
           {/* 3. Design & Usability */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 print:break-inside-avoid">
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Design &amp; Usability</h2>
             <div className="space-y-4">
               <QualBar label="Visual Design" score={qualitative.visualDesign.score} notes={qualitative.visualDesign.notes} />
@@ -372,7 +416,7 @@ export default function ResultsPage() {
           </div>
 
           {/* 4. Site Health Scores */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 print:break-inside-avoid">
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Site Health Scores</h2>
             <div className="grid grid-cols-4 gap-4">
               <ScoreRing score={lighthouse.performance} label="Speed" />
@@ -383,7 +427,7 @@ export default function ResultsPage() {
           </div>
 
           {/* 5. Loading Experience */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 print:break-inside-avoid">
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-1">Loading Experience</h2>
             <p className="text-xs text-slate-400 mb-3">How visitors experience your site loading in their browser</p>
             <div className="space-y-2">
@@ -392,7 +436,7 @@ export default function ResultsPage() {
           </div>
 
           {/* 6. Accessibility Issues */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 print:break-inside-avoid">
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-1 flex items-center gap-2">
               Accessibility Issues
               {axeViolations && axeViolations.length > 0 && (

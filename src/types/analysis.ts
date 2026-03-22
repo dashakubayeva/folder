@@ -39,16 +39,22 @@ export interface NavigationAnalysis {
   recommendations: string[];        // 2-5 concrete improvements
 }
 
+export interface PrioritizedItem {
+  text: string;
+  priority: 'critical' | 'high' | 'medium';
+}
+
 export type PageType = 'landing' | 'ecommerce' | 'blog' | 'dashboard' | 'form' | 'portfolio' | 'other';
 
 export interface AnalysisResult {
   url: string;
   screenshotPath: string;
+  mobileScreenshotPath?: string;
   pageType: PageType;
   lighthouse: LighthouseMetrics;
   axeViolations: AxeViolation[];
-  good: string[];
-  bad: string[];
+  good: PrioritizedItem[];
+  bad: PrioritizedItem[];
   qualitative: {
     visualDesign: QualitativeCategory;
     navigation: QualitativeCategory;

@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
 import { SCREENSHOTS_DIR } from '@/lib/storage';
-import { AnalysisResult, AxeViolation, LighthouseMetrics, NavigationAnalysis, PageType } from '@/types/analysis';
+import { AnalysisResult, AxeViolation, LighthouseMetrics, NavigationAnalysis, PageType, PrioritizedItem } from '@/types/analysis';
 
 const client = new Anthropic();
 
@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
 
   // ── Step 1: Screenshot + HTML + axe-core via Playwright ──────────────────
   let screenshotBuffer: Buffer;
+  let mobileFullBuffer: Buffer | null = null;
   let navScreenshotBuffer: Buffer | null = null;
   let navMobileBuffer: Buffer | null = null;
   let html: string;
@@ -114,10 +115,11 @@ export async function POST(req: NextRequest) {
       console.error('Nav screenshot failed:', err);
     }
 
-    // Capture mobile nav screenshot (375px)
+    // Capture mobile screenshots (375px): full-page + nav
     try {
       await page.setViewportSize({ width: 375, height: 812 });
       await page.waitForTimeout(500); // let responsive CSS reflow
+      mobileFullBuffer = Buffer.from(await page.screenshot({ fullPage: true }));
       const mobileNavEl = page.locator('header, nav, [role="navigation"]').first();
       const mobileBox = await mobileNavEl.boundingBox();
       if (mobileBox) {
@@ -130,7 +132,7 @@ export async function POST(req: NextRequest) {
         }));
       }
     } catch (err) {
-      console.error('Mobile nav screenshot failed:', err);
+      console.error('Mobile screenshot failed:', err);
     }
   } finally {
     await browser.close();
@@ -154,6 +156,13 @@ export async function POST(req: NextRequest) {
     const navMobileFilename = `ux-nav-mobile-${id}.png`;
     await fs.writeFile(path.join(SCREENSHOTS_DIR, navMobileFilename), navMobileBuffer);
     navMobileScreenshotPath = `/api/screenshots/${navMobileFilename}`;
+  }
+
+  let mobileScreenshotPath: string | undefined;
+  if (mobileFullBuffer) {
+    const mobileFilename = `ux-mobile-${id}.png`;
+    await fs.writeFile(path.join(SCREENSHOTS_DIR, mobileFilename), mobileFullBuffer);
+    mobileScreenshotPath = `/api/screenshots/${mobileFilename}`;
   }
 
   // ── Step 2: Lighthouse audit ──────────────────────────────────────────────
@@ -221,8 +230,12 @@ ${html.slice(0, 12000)}
 
 Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
 {
-  ${isAutoDetect ? '"pageType": "<one of: landing|ecommerce|blog|dashboard|form|portfolio|other>",\n  ' : ''}"good": ["3-6 specific strengths relevant to this type of page"],
-  "bad": ["3-6 specific UX problems relevant to this type of page, be concrete and actionable"],
+  ${isAutoDetect ? '"pageType": "<one of: landing|ecommerce|blog|dashboard|form|portfolio|other>",\n  ' : ''}"good": [
+    { "text": "<specific strength>", "priority": "<high|medium>" }
+  ],
+  "bad": [
+    { "text": "<specific UX problem, be concrete and actionable>", "priority": "<critical|high|medium>" }
+  ],
   "qualitative": {
     "visualDesign": { "score": <1-10>, "notes": "<one specific sentence about typography, colors, visual hierarchy>" },
     "navigation": { "score": <1-10>, "notes": "<one specific sentence about menu, wayfinding, structure>" },
@@ -230,10 +243,11 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
     "callsToAction": { "score": <1-10>, "notes": "<one specific sentence about button visibility, clarity of next steps>" },
     "trustCredibility": { "score": <1-10>, "notes": "<one specific sentence about trust signals, social proof, professionalism>" }
   }
-}`;
+}
+Include 3-6 items in good and bad. Order bad items by priority (critical first). Use "critical" only for issues that significantly block users or hurt conversions.`;
 
-  let claudeGood: string[] = [];
-  let claudeBad: string[] = [];
+  let claudeGood: PrioritizedItem[] = [];
+  let claudeBad: PrioritizedItem[] = [];
   let detectedPageType: string | undefined;
   let claudeQualitative: AnalysisResult['qualitative'] = {
     visualDesign: { score: 5, notes: 'Analysis unavailable' },
@@ -267,8 +281,14 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     const jsonStr = jsonMatch ? jsonMatch[0] : '{}';
     const parsed = JSON.parse(jsonStr);
-    claudeGood = Array.isArray(parsed.good) ? parsed.good : [];
-    claudeBad = Array.isArray(parsed.bad) ? parsed.bad : [];
+    const toItems = (arr: unknown[]): PrioritizedItem[] =>
+      arr.map(item =>
+        typeof item === 'string'
+          ? { text: item, priority: 'high' as const }
+          : { text: String((item as Record<string, unknown>).text ?? ''), priority: ((item as Record<string, unknown>).priority ?? 'high') as PrioritizedItem['priority'] }
+      );
+    claudeGood = Array.isArray(parsed.good) ? toItems(parsed.good) : [];
+    claudeBad = Array.isArray(parsed.bad) ? toItems(parsed.bad) : [];
     detectedPageType = parsed.pageType;
     if (parsed.qualitative) claudeQualitative = parsed.qualitative;
   } catch (err) {
@@ -385,6 +405,7 @@ Coordinates are percentages: x=0,y=0 is top-left; x=100,y=100 is bottom-right. T
   const result: AnalysisResult = {
     url,
     screenshotPath,
+    ...(mobileScreenshotPath && { mobileScreenshotPath }),
     pageType,
     lighthouse: lighthouseData,
     axeViolations,
