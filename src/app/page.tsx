@@ -83,7 +83,7 @@ export default function HomePage() {
         </svg>
       </div>
 
-      <h1 className="text-4xl font-bold text-slate-900 mb-3 tracking-tight">UX Analyzer</h1>
+      <h1 className="text-4xl font-bold text-slate-900 mb-3 tracking-tight">Viewra</h1>
       <p className="text-slate-500 text-lg mb-10 max-w-md">
         Enter any website URL to get an instant AI-powered UX audit — performance, accessibility, and design quality.
       </p>

@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'UX Analyzer',
-  description: 'AI-powered UX audit for any website',
+  title: 'Viewra',
+  description: 'AI-powered UX analysis for any website',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -20,7 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
               </div>
-              <span className="text-white font-semibold text-sm tracking-tight">UX Analyzer</span>
+              <span className="text-white font-semibold text-sm tracking-tight">Viewra</span>
             </a>
             <a
               href="/scenarios"

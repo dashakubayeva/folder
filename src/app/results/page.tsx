@@ -251,7 +251,7 @@ export default function ResultsPage() {
 
       {/* ── Print-only header ── */}
       <div className="hidden print:block mb-4 pb-4 border-b border-slate-200">
-        <h1 className="text-xl font-bold text-slate-900">UX Analysis Report</h1>
+        <h1 className="text-xl font-bold text-slate-900">Viewra Report</h1>
         <p className="text-sm text-slate-500">{url} · {new Date(analyzedAt).toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' })}</p>
       </div>
 
@@ -264,7 +264,7 @@ export default function ResultsPage() {
             </svg>
             {hostname}
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">UX Analysis Report</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Viewra Report</h1>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             <p className="text-sm text-slate-400">
               {new Date(analyzedAt).toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' })}
