@@ -4,65 +4,107 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnalysisResult, AttentionZone } from '@/types/analysis';
 
-function ScoreRing({ score, label, color }: { score: number; label: string; color: string }) {
+// ── Helper: score → status word ──────────────────────────────────────────────
+function scoreStatus(pct: number): { word: string; color: string } {
+  if (pct >= 90) return { word: 'Great',      color: 'text-emerald-600' };
+  if (pct >= 50) return { word: 'OK',         color: 'text-amber-600' };
+  return              { word: 'Poor',         color: 'text-red-500' };
+}
+
+// ── Overall grade ─────────────────────────────────────────────────────────────
+function calcOverall(lh: AnalysisResult['lighthouse'], qual: AnalysisResult['qualitative']) {
+  const qualAvg = (
+    qual.visualDesign.score +
+    qual.navigation.score +
+    qual.contentClarity.score +
+    qual.callsToAction.score +
+    qual.trustCredibility.score
+  ) / 5 * 10; // scale 1-10 → 0-100
+
+  const score = Math.round(
+    lh.performance  * 0.25 +
+    lh.accessibility * 0.20 +
+    lh.seo          * 0.15 +
+    qualAvg         * 0.40
+  );
+
+  let grade: string, verdict: string, bg: string, text: string;
+  if (score >= 90) { grade = 'A'; verdict = 'Excellent — this site delivers a great user experience'; bg = 'bg-emerald-50'; text = 'text-emerald-700'; }
+  else if (score >= 75) { grade = 'B'; verdict = 'Good — works well with a few areas to improve'; bg = 'bg-emerald-50'; text = 'text-emerald-700'; }
+  else if (score >= 60) { grade = 'C'; verdict = 'Fair — noticeable issues are affecting user experience'; bg = 'bg-amber-50'; text = 'text-amber-700'; }
+  else if (score >= 45) { grade = 'D'; verdict = 'Poor — significant problems that hurt usability'; bg = 'bg-orange-50'; text = 'text-orange-700'; }
+  else { grade = 'F'; verdict = 'Critical — major issues need immediate attention'; bg = 'bg-red-50'; text = 'text-red-700'; }
+
+  return { score, grade, verdict, bg, text };
+}
+
+// ── ScoreRing ─────────────────────────────────────────────────────────────────
+function ScoreRing({ score, label }: { score: number; label: string }) {
   const r = 28;
   const circ = 2 * Math.PI * r;
   const pct = Math.max(0, Math.min(100, score));
   const dash = (pct / 100) * circ;
-
-  const ringColor =
-    pct >= 90 ? '#16a34a' : pct >= 50 ? '#d97706' : '#dc2626';
+  const ringColor = pct >= 90 ? '#16a34a' : pct >= 50 ? '#d97706' : '#dc2626';
+  const { word, color } = scoreStatus(pct);
 
   return (
-    <div className="flex flex-col items-center gap-1.5">
+    <div className="flex flex-col items-center gap-1">
       <svg width="72" height="72" className="-rotate-90">
         <circle cx="36" cy="36" r={r} fill="none" stroke="#e2e8f0" strokeWidth="6" />
-        <circle
-          cx="36"
-          cy="36"
-          r={r}
-          fill="none"
-          stroke={ringColor}
-          strokeWidth="6"
-          strokeDasharray={`${dash} ${circ}`}
-          strokeLinecap="round"
-          style={{ transition: 'stroke-dasharray 0.6s ease' }}
-        />
-        <text
-          x="36"
-          y="36"
-          dominantBaseline="middle"
-          textAnchor="middle"
-          className="rotate-90"
-          style={{ transform: 'rotate(90deg)', transformOrigin: '36px 36px', fontSize: '14px', fontWeight: 700, fill: '#0f172a' }}
-        >
+        <circle cx="36" cy="36" r={r} fill="none" stroke={ringColor} strokeWidth="6"
+          strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+          style={{ transition: 'stroke-dasharray 0.6s ease' }} />
+        <text x="36" y="36" dominantBaseline="middle" textAnchor="middle"
+          style={{ transform: 'rotate(90deg)', transformOrigin: '36px 36px', fontSize: '14px', fontWeight: 700, fill: '#0f172a' }}>
           {pct}
         </text>
       </svg>
-      <span className="text-xs text-slate-500 font-medium text-center leading-tight">{label}</span>
+      <span className="text-xs text-slate-600 font-semibold text-center leading-tight">{label}</span>
+      <span className={`text-xs font-medium ${color}`}>{word}</span>
     </div>
   );
 }
 
-function MetricPill({ label, value, unit, good }: { label: string; value: number | null; unit: string; good: boolean }) {
-  if (value === null) return null;
+// ── MetricPill (human-friendly) ───────────────────────────────────────────────
+interface MetricConfig {
+  humanLabel: string;
+  description: string;
+  value: number | null;
+  format: (v: number) => string;
+  status: (v: number) => { word: string; good: boolean };
+}
+
+function MetricPill({ cfg }: { cfg: MetricConfig }) {
+  if (cfg.value === null) return null;
+  const { word, good } = cfg.status(cfg.value);
   return (
-    <div className="flex items-center justify-between bg-white border border-slate-100 rounded-xl px-3.5 py-2.5">
-      <span className="text-xs text-slate-500">{label}</span>
-      <span className={`text-sm font-semibold ${good ? 'text-emerald-600' : 'text-amber-600'}`}>
-        {value < 1 ? value.toFixed(3) : Math.round(value).toLocaleString()}{unit}
-      </span>
+    <div className="bg-white border border-slate-100 rounded-xl px-3.5 py-3 space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-slate-700">{cfg.humanLabel}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-bold text-slate-900">{cfg.format(cfg.value)}</span>
+          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-md ${good ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+            {word}
+          </span>
+        </div>
+      </div>
+      <p className="text-xs text-slate-400">{cfg.description}</p>
     </div>
   );
 }
 
+// ── QualBar ───────────────────────────────────────────────────────────────────
 function QualBar({ label, score, notes }: { label: string; score: number; notes: string }) {
   const color = score >= 8 ? 'bg-emerald-500' : score >= 5 ? 'bg-amber-400' : 'bg-red-500';
+  const { word, color: textColor } = scoreStatus(score * 10);
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-slate-700">{label}</span>
-        <span className="text-sm font-bold text-slate-900">{score}<span className="text-slate-400 font-normal">/10</span></span>
+        <div className="flex items-center gap-1.5">
+          <span className={`text-xs font-medium ${textColor}`}>{word}</span>
+          <span className="text-sm font-bold text-slate-900">{score}<span className="text-slate-400 font-normal">/10</span></span>
+        </div>
       </div>
       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
         <div className={`h-full ${color} rounded-full transition-all duration-700`} style={{ width: `${score * 10}%` }} />
@@ -72,6 +114,7 @@ function QualBar({ label, score, notes }: { label: string; score: number; notes:
   );
 }
 
+// ── HeatmapOverlay ────────────────────────────────────────────────────────────
 function HeatmapOverlay({ zones, imgEl }: { zones: AttentionZone[]; imgEl: HTMLImageElement | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -88,12 +131,10 @@ function HeatmapOverlay({ zones, imgEl }: { zones: AttentionZone[]; imgEl: HTMLI
       for (const zone of zones) {
         const cx = (zone.x / 100) * canvas.width;
         const cy = (zone.y / 100) * canvas.height;
-        const r = (zone.radius / 100) * canvas.width;
+        const r  = (zone.radius / 100) * canvas.width;
         const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
         const alpha = zone.intensity * 0.65;
-        const color = zone.intensity > 0.7 ? '255,30,30'
-                    : zone.intensity > 0.45 ? '255,160,0'
-                    : '60,100,255';
+        const color = zone.intensity > 0.7 ? '255,30,30' : zone.intensity > 0.45 ? '255,160,0' : '60,100,255';
         grad.addColorStop(0, `rgba(${color},${alpha})`);
         grad.addColorStop(1, `rgba(${color},0)`);
         ctx.fillStyle = grad;
@@ -103,22 +144,14 @@ function HeatmapOverlay({ zones, imgEl }: { zones: AttentionZone[]; imgEl: HTMLI
       }
     };
 
-    if (imgEl.complete && imgEl.naturalWidth > 0) {
-      draw();
-    } else {
-      imgEl.addEventListener('load', draw, { once: true });
-    }
+    if (imgEl.complete && imgEl.naturalWidth > 0) draw();
+    else imgEl.addEventListener('load', draw, { once: true });
   }, [zones, imgEl]);
 
-  return (
-    <canvas
-      ref={canvasRef}
-      className="absolute inset-0 w-full h-full pointer-events-none"
-      style={{ mixBlendMode: 'multiply' }}
-    />
-  );
+  return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" style={{ mixBlendMode: 'multiply' }} />;
 }
 
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function ResultsPage() {
   const router = useRouter();
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -127,15 +160,8 @@ export default function ResultsPage() {
 
   useEffect(() => {
     const raw = sessionStorage.getItem('ux-analysis');
-    if (!raw) {
-      router.replace('/');
-      return;
-    }
-    try {
-      setResult(JSON.parse(raw));
-    } catch {
-      router.replace('/');
-    }
+    if (!raw) { router.replace('/'); return; }
+    try { setResult(JSON.parse(raw)); } catch { router.replace('/'); }
   }, [router]);
 
   if (!result) {
@@ -154,6 +180,7 @@ export default function ResultsPage() {
 
   const { url, screenshotPath, pageType, lighthouse, axeViolations, good, bad, qualitative, navigationAnalysis, heatmap, analyzedAt } = result;
   const hostname = (() => { try { return new URL(url).hostname; } catch { return url; } })();
+  const overall = calcOverall(lighthouse, qualitative);
 
   const PAGE_TYPE_META: Record<string, { label: string; emoji: string }> = {
     landing:   { label: 'Landing page',   emoji: '🎯' },
@@ -165,9 +192,53 @@ export default function ResultsPage() {
     other:     { label: 'Website',        emoji: '🌐' },
   };
 
+  const navScoreWord = navigationAnalysis
+    ? (navigationAnalysis.score >= 8 ? 'Great' : navigationAnalysis.score >= 5 ? 'OK' : 'Poor')
+    : '';
+
+  // Metric configs with human labels
+  const metrics: MetricConfig[] = [
+    {
+      humanLabel: 'Page Load Time',
+      description: 'How long until the main content is fully visible',
+      value: lighthouse.lcp,
+      format: v => `${(v / 1000).toFixed(1)}s`,
+      status: v => v <= 2500 ? { word: 'Good', good: true } : v <= 4000 ? { word: 'Needs work', good: false } : { word: 'Slow', good: false },
+    },
+    {
+      humanLabel: 'First Content Appears',
+      description: 'Time until something first shows on screen',
+      value: lighthouse.fcp,
+      format: v => `${(v / 1000).toFixed(1)}s`,
+      status: v => v <= 1800 ? { word: 'Good', good: true } : v <= 3000 ? { word: 'Needs work', good: false } : { word: 'Slow', good: false },
+    },
+    {
+      humanLabel: 'Page Responsiveness',
+      description: 'How quickly the page reacts to clicks and input',
+      value: lighthouse.tbt,
+      format: v => `${Math.round(v)}ms`,
+      status: v => v <= 200 ? { word: 'Good', good: true } : v <= 600 ? { word: 'Needs work', good: false } : { word: 'Slow', good: false },
+    },
+    {
+      humanLabel: 'Layout Stability',
+      description: 'Whether elements jump around as the page loads',
+      value: lighthouse.cls,
+      format: v => v < 1 ? v.toFixed(3) : String(v),
+      status: v => v <= 0.1 ? { word: 'Stable', good: true } : v <= 0.25 ? { word: 'Minor shifts', good: false } : { word: 'Unstable', good: false },
+    },
+    {
+      humanLabel: 'Visual Speed',
+      description: 'How fast the page looks complete to visitors',
+      value: lighthouse.speedIndex,
+      format: v => `${(v / 1000).toFixed(1)}s`,
+      status: v => v <= 3400 ? { word: 'Good', good: true } : v <= 5800 ? { word: 'Needs work', good: false } : { word: 'Slow', good: false },
+    },
+  ];
+
   return (
     <div className="animate-fade-in space-y-8">
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
@@ -188,10 +259,8 @@ export default function ResultsPage() {
             )}
           </div>
         </div>
-        <button
-          onClick={() => router.push('/')}
-          className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-        >
+        <button onClick={() => router.push('/')}
+          className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
@@ -199,7 +268,9 @@ export default function ResultsPage() {
         </button>
       </div>
 
+      {/* ── Main grid ── */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
         {/* Left: screenshot */}
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
@@ -209,12 +280,8 @@ export default function ResultsPage() {
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
               <span className="text-xs text-slate-400 ml-2 truncate flex-1">{url}</span>
               {heatmap && (
-                <button
-                  onClick={() => setShowHeatmap(s => !s)}
-                  className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-md font-medium transition-colors ${
-                    showHeatmap ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-                  }`}
-                >
+                <button onClick={() => setShowHeatmap(s => !s)}
+                  className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-md font-medium transition-colors ${showHeatmap ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>
                   🔥 {showHeatmap ? 'Hide' : 'Attention map'}
                 </button>
               )}
@@ -222,9 +289,7 @@ export default function ResultsPage() {
             <div className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img ref={screenshotImgRef} src={screenshotPath} alt={`Screenshot of ${hostname}`} className="w-full" />
-              {showHeatmap && heatmap && (
-                <HeatmapOverlay zones={heatmap.zones} imgEl={screenshotImgRef.current} />
-              )}
+              {showHeatmap && heatmap && <HeatmapOverlay zones={heatmap.zones} imgEl={screenshotImgRef.current} />}
             </div>
           </div>
           {showHeatmap && heatmap && (
@@ -240,33 +305,23 @@ export default function ResultsPage() {
           )}
         </div>
 
-        {/* Right: all scores */}
+        {/* Right: scores */}
         <div className="lg:col-span-3 space-y-5">
 
-          {/* Lighthouse scores */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Lighthouse Scores</h2>
-            <div className="grid grid-cols-4 gap-4">
-              <ScoreRing score={lighthouse.performance} label="Performance" color="green" />
-              <ScoreRing score={lighthouse.accessibility} label="Accessibility" color="amber" />
-              <ScoreRing score={lighthouse.bestPractices} label="Best Practices" color="blue" />
-              <ScoreRing score={lighthouse.seo} label="SEO" color="purple" />
+          {/* 1. Overall Score */}
+          <div className={`${overall.bg} border border-slate-200 rounded-2xl p-5 flex items-center gap-5`}>
+            <div className={`text-5xl font-black ${overall.text} leading-none w-12 text-center flex-shrink-0`}>
+              {overall.grade}
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-lg font-bold text-slate-900">Overall Score: {overall.score}/100</span>
+              </div>
+              <p className={`text-sm font-medium ${overall.text}`}>{overall.verdict}</p>
             </div>
           </div>
 
-          {/* Core Web Vitals */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Core Web Vitals</h2>
-            <div className="grid grid-cols-2 gap-2">
-              <MetricPill label="LCP" value={lighthouse.lcp} unit="ms" good={(lighthouse.lcp ?? 9999) <= 2500} />
-              <MetricPill label="FCP" value={lighthouse.fcp} unit="ms" good={(lighthouse.fcp ?? 9999) <= 1800} />
-              <MetricPill label="TBT" value={lighthouse.tbt} unit="ms" good={(lighthouse.tbt ?? 9999) <= 200} />
-              <MetricPill label="CLS" value={lighthouse.cls} unit="" good={(lighthouse.cls ?? 1) <= 0.1} />
-              <MetricPill label="Speed Index" value={lighthouse.speedIndex} unit="ms" good={(lighthouse.speedIndex ?? 9999) <= 3400} />
-            </div>
-          </div>
-
-          {/* Good / Bad */}
+          {/* 2. What's working / Needs improvement */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
               <h2 className="text-sm font-semibold text-emerald-800 mb-3 flex items-center gap-1.5">
@@ -285,7 +340,6 @@ export default function ResultsPage() {
                 {good.length === 0 && <li className="text-sm text-emerald-600 italic">No data</li>}
               </ul>
             </div>
-
             <div className="bg-red-50 border border-red-100 rounded-2xl p-4">
               <h2 className="text-sm font-semibold text-red-800 mb-3 flex items-center gap-1.5">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -305,83 +359,109 @@ export default function ResultsPage() {
             </div>
           </div>
 
-          {/* Axe-core accessibility violations */}
-          {axeViolations && axeViolations.length > 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">
-                Accessibility Violations
+          {/* 3. Design & Usability */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Design &amp; Usability</h2>
+            <div className="space-y-4">
+              <QualBar label="Visual Design" score={qualitative.visualDesign.score} notes={qualitative.visualDesign.notes} />
+              <QualBar label="Navigation & Menus" score={qualitative.navigation.score} notes={qualitative.navigation.notes} />
+              <QualBar label="Content Clarity" score={qualitative.contentClarity.score} notes={qualitative.contentClarity.notes} />
+              <QualBar label="Buttons & Calls to Action" score={qualitative.callsToAction.score} notes={qualitative.callsToAction.notes} />
+              <QualBar label="Trust & Credibility" score={qualitative.trustCredibility.score} notes={qualitative.trustCredibility.notes} />
+            </div>
+          </div>
+
+          {/* 4. Site Health Scores */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Site Health Scores</h2>
+            <div className="grid grid-cols-4 gap-4">
+              <ScoreRing score={lighthouse.performance} label="Speed" />
+              <ScoreRing score={lighthouse.accessibility} label="Accessibility" />
+              <ScoreRing score={lighthouse.bestPractices} label="Code Quality" />
+              <ScoreRing score={lighthouse.seo} label="SEO" />
+            </div>
+          </div>
+
+          {/* 5. Loading Experience */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-1">Loading Experience</h2>
+            <p className="text-xs text-slate-400 mb-3">How visitors experience your site loading in their browser</p>
+            <div className="space-y-2">
+              {metrics.map(cfg => <MetricPill key={cfg.humanLabel} cfg={cfg} />)}
+            </div>
+          </div>
+
+          {/* 6. Accessibility Issues */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-1 flex items-center gap-2">
+              Accessibility Issues
+              {axeViolations && axeViolations.length > 0 && (
                 <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-normal">
                   {axeViolations.length} found
                 </span>
-              </h2>
+              )}
+            </h2>
+            <p className="text-xs text-slate-400 mb-3">Issues that may prevent some users from accessing your content</p>
+            {(!axeViolations || axeViolations.length === 0) ? (
+              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-3 py-2.5">
+                <span className="text-emerald-500">✓</span> No accessibility issues found — great job!
+              </div>
+            ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {axeViolations
-                  .sort((a, b) => {
-                    const order = { critical: 0, serious: 1, moderate: 2, minor: 3 };
-                    return order[a.impact] - order[b.impact];
-                  })
+                {[...axeViolations]
+                  .sort((a, b) => ({ critical: 0, serious: 1, moderate: 2, minor: 3 }[a.impact] - { critical: 0, serious: 1, moderate: 2, minor: 3 }[b.impact]))
                   .map((v) => (
                     <div key={v.id} className="flex items-start gap-3 text-sm">
                       <span className={`mt-0.5 flex-shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded ${
                         v.impact === 'critical' ? 'bg-red-100 text-red-700' :
-                        v.impact === 'serious' ? 'bg-orange-100 text-orange-700' :
+                        v.impact === 'serious'  ? 'bg-orange-100 text-orange-700' :
                         v.impact === 'moderate' ? 'bg-amber-100 text-amber-700' :
                         'bg-slate-100 text-slate-600'
                       }`}>
-                        {v.impact}
+                        {v.impact === 'critical' ? 'Critical' : v.impact === 'serious' ? 'Serious' : v.impact === 'moderate' ? 'Moderate' : 'Minor'}
                       </span>
                       <span className="text-slate-700 flex-1">{v.description}</span>
-                      <span className="text-slate-400 text-xs flex-shrink-0">{v.nodes}×</span>
+                      <span className="text-slate-400 text-xs flex-shrink-0">{v.nodes} element{v.nodes !== 1 ? 's' : ''}</span>
                     </div>
                   ))}
               </div>
-            </div>
-          )}
-
-          {/* Qualitative UX */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">UX Quality (AI Assessment)</h2>
-            <div className="space-y-4">
-              <QualBar label="Visual Design" score={qualitative.visualDesign.score} notes={qualitative.visualDesign.notes} />
-              <QualBar label="Navigation" score={qualitative.navigation.score} notes={qualitative.navigation.notes} />
-              <QualBar label="Content Clarity" score={qualitative.contentClarity.score} notes={qualitative.contentClarity.notes} />
-              <QualBar label="Calls to Action" score={qualitative.callsToAction.score} notes={qualitative.callsToAction.notes} />
-              <QualBar label="Trust & Credibility" score={qualitative.trustCredibility.score} notes={qualitative.trustCredibility.notes} />
-            </div>
+            )}
           </div>
 
         </div>
       </div>
 
-      {/* Navigation Analysis */}
+      {/* ── Navigation Analysis ── */}
       {navigationAnalysis && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-5">
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Navigation Analysis</h2>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Navigation Analysis</h2>
+              <p className="text-xs text-slate-400 mt-0.5">How easy it is for visitors to find their way around</p>
+            </div>
             <div className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full ${
               navigationAnalysis.score >= 8 ? 'bg-emerald-100 text-emerald-700' :
               navigationAnalysis.score >= 5 ? 'bg-amber-100 text-amber-700' :
               'bg-red-100 text-red-700'
             }`}>
-              Score: {navigationAnalysis.score}/10
+              {navScoreWord} — {navigationAnalysis.score}/10
             </div>
           </div>
 
           <p className="text-sm text-slate-500 italic">{navigationAnalysis.notes}</p>
 
-          {/* Nav screenshots — desktop + mobile side by side */}
           <div className={`grid gap-3 ${navigationAnalysis.mobileScreenshotPath ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-xs text-slate-400 font-medium">
-                Desktop (1280px)
+              <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-xs text-slate-500 font-medium">
+                Desktop view
               </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={navigationAnalysis.screenshotPath} alt="Desktop navigation" className="w-full" />
             </div>
             {navigationAnalysis.mobileScreenshotPath && (
               <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-xs text-slate-400 font-medium">
-                  Mobile (375px)
+                <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-xs text-slate-500 font-medium">
+                  Mobile view
                 </div>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={navigationAnalysis.mobileScreenshotPath} alt="Mobile navigation" className="w-full" />
@@ -390,40 +470,32 @@ export default function ResultsPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Issues */}
             <div>
               <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2">Issues found</h3>
               <ul className="space-y-2">
                 {navigationAnalysis.issues.map((item, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
-                    <span className="text-red-400 mt-0.5 flex-shrink-0">✗</span>
-                    {item}
+                    <span className="text-red-400 mt-0.5 flex-shrink-0">✗</span>{item}
                   </li>
                 ))}
-                {navigationAnalysis.issues.length === 0 && (
-                  <li className="text-sm text-slate-400 italic">No issues found</li>
-                )}
+                {navigationAnalysis.issues.length === 0 && <li className="text-sm text-slate-400 italic">No issues found</li>}
               </ul>
             </div>
-
-            {/* Recommendations */}
             <div>
-              <h3 className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">Recommendations</h3>
+              <h3 className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">How to improve</h3>
               <ul className="space-y-2">
                 {navigationAnalysis.recommendations.map((item, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
-                    <span className="text-violet-500 mt-0.5 flex-shrink-0">→</span>
-                    {item}
+                    <span className="text-violet-500 mt-0.5 flex-shrink-0">→</span>{item}
                   </li>
                 ))}
-                {navigationAnalysis.recommendations.length === 0 && (
-                  <li className="text-sm text-slate-400 italic">No recommendations</li>
-                )}
+                {navigationAnalysis.recommendations.length === 0 && <li className="text-sm text-slate-400 italic">No recommendations</li>}
               </ul>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }
