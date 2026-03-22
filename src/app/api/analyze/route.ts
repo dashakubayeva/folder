@@ -74,6 +74,8 @@ export async function POST(req: NextRequest) {
   let axeViolations: AxeViolation[] = [];
   const browser = await chromium.launch({
     headless: true,
+    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+      || '/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome',
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });
   try {
@@ -168,7 +170,8 @@ export async function POST(req: NextRequest) {
   // ── Step 2: Lighthouse audit ──────────────────────────────────────────────
   let lighthouseData: LighthouseMetrics = { ...EMPTY_LIGHTHOUSE };
   const chrome = await launch({
-    chromePath: chromium.executablePath(),
+    chromePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+      || '/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome',
     chromeFlags: [
       '--headless',
       '--disable-gpu',
