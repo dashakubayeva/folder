@@ -16,6 +16,7 @@ const LOADING_STEPS = [
 export default function HomePage() {
   const router = useRouter();
   const [url, setUrl] = useState('');
+  const [pageTypeHint, setPageTypeHint] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState('');
@@ -45,7 +46,7 @@ export default function HomePage() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: normalized }),
+        body: JSON.stringify({ url: normalized, pageTypeHint: pageTypeHint || undefined }),
       });
 
       if (!res.ok) {
@@ -109,6 +110,25 @@ export default function HomePage() {
               </>
             )}
           </button>
+        </div>
+
+        {/* Page type selector */}
+        <div className="mt-3 flex items-center gap-2">
+          <label className="text-xs text-slate-400 whitespace-nowrap">Page type:</label>
+          <select
+            value={pageTypeHint}
+            onChange={(e) => setPageTypeHint(e.target.value)}
+            disabled={loading}
+            className="flex-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50 shadow-sm"
+          >
+            <option value="">Auto-detect</option>
+            <option value="landing">Landing page</option>
+            <option value="ecommerce">E-commerce / Product</option>
+            <option value="blog">Blog / Article</option>
+            <option value="dashboard">Dashboard / App</option>
+            <option value="form">Form / Contact</option>
+            <option value="portfolio">Portfolio</option>
+          </select>
         </div>
 
         {/* Loading progress */}

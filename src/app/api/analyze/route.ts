@@ -8,9 +8,29 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
 import { SCREENSHOTS_DIR } from '@/lib/storage';
-import { AnalysisResult, AxeViolation, LighthouseMetrics, NavigationAnalysis } from '@/types/analysis';
+import { AnalysisResult, AxeViolation, LighthouseMetrics, NavigationAnalysis, PageType } from '@/types/analysis';
 
 const client = new Anthropic();
+
+const PAGE_TYPE_CRITERIA: Record<string, string> = {
+  landing: 'hero section clarity, value proposition visibility above the fold, primary CTA prominence and contrast, social proof (testimonials/logos), trust signals',
+  ecommerce: 'product image quality and size, price visibility and prominence, add-to-cart button clarity, trust badges and reviews, breadcrumb navigation, related products',
+  blog: 'typography and line height for readability, optimal content width (~680px), heading hierarchy (H1-H2-H3), author info and date, related articles',
+  dashboard: 'data visualization clarity, information density vs whitespace balance, primary action button placement, status indicators and feedback, filter/search accessibility',
+  form: 'form field labels and placeholder clarity, required field indicators, submit CTA visibility, inline validation hints, alternative contact methods, minimal nav distraction',
+  portfolio: 'project thumbnail quality and grid layout, case study depth visible, client/role context, contact CTA accessibility, smooth project-to-project navigation',
+  other: 'visual hierarchy, content clarity, call-to-action visibility, trust signals, navigation usability',
+};
+
+const NAV_TYPE_EXTRA: Record<string, string> = {
+  landing: '- Minimal nav is ideal: fewer links = less distraction from conversion; one prominent CTA button in nav is best',
+  ecommerce: '- Search bar should be visible and prominent; cart icon with item count should be present; clear category structure',
+  blog: '- Category/tag links and search should be easily accessible; breadcrumb or reading progress is a plus',
+  dashboard: '- Active state must clearly show current section; breadcrumbs for deep navigation hierarchies are important',
+  form: '- Nav should be minimal and unobtrusive to avoid distracting from form completion',
+  portfolio: '- Smooth prev/next project navigation; portfolio section should be clearly linked from nav',
+  other: '',
+};
 
 const EMPTY_LIGHTHOUSE: LighthouseMetrics = {
   performance: 0,
@@ -26,8 +46,9 @@ const EMPTY_LIGHTHOUSE: LighthouseMetrics = {
 
 export async function POST(req: NextRequest) {
   let url: string;
+  let pageTypeHint: string | undefined;
   try {
-    ({ url } = await req.json());
+    ({ url, pageTypeHint } = await req.json());
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
@@ -185,16 +206,23 @@ export async function POST(req: NextRequest) {
 
   // ── Step 3: Claude Vision qualitative analysis ────────────────────────────
   const imageBase64 = screenshotBuffer.toString('base64');
+  const isAutoDetect = !pageTypeHint;
 
-  const prompt = `You are a senior UX designer. Analyze this website screenshot and HTML for UX quality.
+  const criteriaNote = isAutoDetect
+    ? `First, identify the page type (one of: landing, ecommerce, blog, dashboard, form, portfolio, other) based on what you see, and include it as "pageType" in your JSON. Then apply evaluation criteria appropriate for that type.`
+    : `This is a ${pageTypeHint} page. Evaluate it using these specific criteria: ${PAGE_TYPE_CRITERIA[pageTypeHint] ?? PAGE_TYPE_CRITERIA.other}`;
+
+  const prompt = `You are a senior UX designer. Analyze this website screenshot and HTML.
+
+${criteriaNote}
 
 HTML snippet:
 ${html.slice(0, 12000)}
 
 Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
 {
-  "good": ["3-6 specific things done well, be concrete about what you see"],
-  "bad": ["3-6 specific UX problems that hurt usability, be concrete and actionable"],
+  ${isAutoDetect ? '"pageType": "<one of: landing|ecommerce|blog|dashboard|form|portfolio|other>",\n  ' : ''}"good": ["3-6 specific strengths relevant to this type of page"],
+  "bad": ["3-6 specific UX problems relevant to this type of page, be concrete and actionable"],
   "qualitative": {
     "visualDesign": { "score": <1-10>, "notes": "<one specific sentence about typography, colors, visual hierarchy>" },
     "navigation": { "score": <1-10>, "notes": "<one specific sentence about menu, wayfinding, structure>" },
@@ -206,6 +234,7 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
 
   let claudeGood: string[] = [];
   let claudeBad: string[] = [];
+  let detectedPageType: string | undefined;
   let claudeQualitative: AnalysisResult['qualitative'] = {
     visualDesign: { score: 5, notes: 'Analysis unavailable' },
     navigation: { score: 5, notes: 'Analysis unavailable' },
@@ -240,15 +269,19 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
     const parsed = JSON.parse(jsonStr);
     claudeGood = Array.isArray(parsed.good) ? parsed.good : [];
     claudeBad = Array.isArray(parsed.bad) ? parsed.bad : [];
+    detectedPageType = parsed.pageType;
     if (parsed.qualitative) claudeQualitative = parsed.qualitative;
   } catch (err) {
     console.error('Claude analysis failed:', err);
     console.error('Raw Claude response may have been unparseable');
   }
 
+  const pageType = (pageTypeHint || detectedPageType || 'other') as PageType;
+
   // ── Step 4: Claude navigation analysis ───────────────────────────────────
   let navigationAnalysis: NavigationAnalysis | undefined;
   if (navScreenshotBuffer && navScreenshotPath) {
+    const navTypeExtra = NAV_TYPE_EXTRA[pageType] ?? '';
     const navPrompt = `You are a senior UX/navigation expert. You are given ${navMobileBuffer ? 'TWO screenshots: (1) desktop navigation at 1280px wide, (2) mobile navigation at 375px wide' : 'a desktop navigation screenshot at 1280px wide'}.
 
 Score the navigation 1-10 based on these specific criteria:
@@ -259,7 +292,7 @@ Score the navigation 1-10 based on these specific criteria:
 - Visual hierarchy: can users tell what is primary vs secondary navigation?
 - Active/current state: does the nav visually indicate where the user currently is?
 - Mobile menu: is there a visible hamburger icon or mobile menu trigger at 375px?
-
+${navTypeExtra ? `\nAdditional criteria for this ${pageType} page:\n${navTypeExtra}` : ''}
 Scoring guide: 9-10 = 7/7 criteria met, 7-8 = 5-6 met, 5-6 = 3-4 met, 3-4 = 1-2 met, 1-2 = none met.
 
 Return ONLY valid JSON (no markdown, no explanation):
@@ -309,6 +342,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   const result: AnalysisResult = {
     url,
     screenshotPath,
+    pageType,
     lighthouse: lighthouseData,
     axeViolations,
     good: claudeGood,

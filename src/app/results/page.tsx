@@ -103,8 +103,18 @@ export default function ResultsPage() {
     );
   }
 
-  const { url, screenshotPath, lighthouse, axeViolations, good, bad, qualitative, navigationAnalysis, analyzedAt } = result;
+  const { url, screenshotPath, pageType, lighthouse, axeViolations, good, bad, qualitative, navigationAnalysis, analyzedAt } = result;
   const hostname = (() => { try { return new URL(url).hostname; } catch { return url; } })();
+
+  const PAGE_TYPE_META: Record<string, { label: string; emoji: string }> = {
+    landing:   { label: 'Landing page',   emoji: '🎯' },
+    ecommerce: { label: 'E-commerce',     emoji: '🛍️' },
+    blog:      { label: 'Blog / Article', emoji: '📝' },
+    dashboard: { label: 'Dashboard',      emoji: '📊' },
+    form:      { label: 'Form / Contact', emoji: '📋' },
+    portfolio: { label: 'Portfolio',      emoji: '🖼️' },
+    other:     { label: 'Website',        emoji: '🌐' },
+  };
 
   return (
     <div className="animate-fade-in space-y-8">
@@ -118,9 +128,16 @@ export default function ResultsPage() {
             {hostname}
           </div>
           <h1 className="text-2xl font-bold text-slate-900">UX Analysis Report</h1>
-          <p className="text-sm text-slate-400 mt-0.5">
-            {new Date(analyzedAt).toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' })}
-          </p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <p className="text-sm text-slate-400">
+              {new Date(analyzedAt).toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' })}
+            </p>
+            {pageType && PAGE_TYPE_META[pageType] && (
+              <span className="inline-flex items-center gap-1 text-xs bg-violet-100 text-violet-700 px-2.5 py-0.5 rounded-full font-medium">
+                {PAGE_TYPE_META[pageType].emoji} {PAGE_TYPE_META[pageType].label}
+              </span>
+            )}
+          </div>
         </div>
         <button
           onClick={() => router.push('/')}
