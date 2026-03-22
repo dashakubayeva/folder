@@ -22,6 +22,14 @@ export interface AxeViolation {
   nodes: number; // how many elements affected
 }
 
+export interface NavigationAnalysis {
+  screenshotPath: string;
+  score: number;        // 1-10
+  notes: string;        // one-sentence overall summary
+  issues: string[];     // 2-5 specific problems
+  recommendations: string[]; // 2-5 concrete improvements
+}
+
 export interface AnalysisResult {
   url: string;
   screenshotPath: string;
@@ -36,5 +44,6 @@ export interface AnalysisResult {
     callsToAction: QualitativeCategory;
     trustCredibility: QualitativeCategory;
   };
+  navigationAnalysis?: NavigationAnalysis;
   analyzedAt: string;
 }

@@ -103,7 +103,7 @@ export default function ResultsPage() {
     );
   }
 
-  const { url, screenshotPath, lighthouse, axeViolations, good, bad, qualitative, analyzedAt } = result;
+  const { url, screenshotPath, lighthouse, axeViolations, good, bad, qualitative, navigationAnalysis, analyzedAt } = result;
   const hostname = (() => { try { return new URL(url).hostname; } catch { return url; } })();
 
   return (
@@ -260,6 +260,70 @@ export default function ResultsPage() {
 
         </div>
       </div>
+
+      {/* Navigation Analysis */}
+      {navigationAnalysis && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-5">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Navigation Analysis</h2>
+            <div className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full ${
+              navigationAnalysis.score >= 8 ? 'bg-emerald-100 text-emerald-700' :
+              navigationAnalysis.score >= 5 ? 'bg-amber-100 text-amber-700' :
+              'bg-red-100 text-red-700'
+            }`}>
+              Score: {navigationAnalysis.score}/10
+            </div>
+          </div>
+
+          <p className="text-sm text-slate-500 italic">{navigationAnalysis.notes}</p>
+
+          {/* Nav screenshot */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+              <div className="w-2 h-2 rounded-full bg-red-400" />
+              <div className="w-2 h-2 rounded-full bg-amber-400" />
+              <div className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span className="text-xs text-slate-400 ml-2">Navigation bar</span>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={navigationAnalysis.screenshotPath} alt="Navigation bar screenshot" className="w-full" />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Issues */}
+            <div>
+              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2">Issues found</h3>
+              <ul className="space-y-2">
+                {navigationAnalysis.issues.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="text-red-400 mt-0.5 flex-shrink-0">✗</span>
+                    {item}
+                  </li>
+                ))}
+                {navigationAnalysis.issues.length === 0 && (
+                  <li className="text-sm text-slate-400 italic">No issues found</li>
+                )}
+              </ul>
+            </div>
+
+            {/* Recommendations */}
+            <div>
+              <h3 className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">Recommendations</h3>
+              <ul className="space-y-2">
+                {navigationAnalysis.recommendations.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="text-violet-500 mt-0.5 flex-shrink-0">→</span>
+                    {item}
+                  </li>
+                ))}
+                {navigationAnalysis.recommendations.length === 0 && (
+                  <li className="text-sm text-slate-400 italic">No recommendations</li>
+                )}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

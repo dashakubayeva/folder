@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
 import { SCREENSHOTS_DIR } from '@/lib/storage';
-import { AnalysisResult, AxeViolation, LighthouseMetrics } from '@/types/analysis';
+import { AnalysisResult, AxeViolation, LighthouseMetrics, NavigationAnalysis } from '@/types/analysis';
 
 const client = new Anthropic();
 
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
 
   // ── Step 1: Screenshot + HTML + axe-core via Playwright ──────────────────
   let screenshotBuffer: Buffer;
+  let navScreenshotBuffer: Buffer | null = null;
   let html: string;
   let axeViolations: AxeViolation[] = [];
   const browser = await chromium.launch({
@@ -73,15 +74,39 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error('axe-core failed:', err);
     }
+
+    // Capture focused nav screenshot
+    try {
+      const navEl = page.locator('header, nav, [role="navigation"]').first();
+      const box = await navEl.boundingBox();
+      if (box) {
+        navScreenshotBuffer = Buffer.from(await page.screenshot({
+          clip: { x: 0, y: box.y, width: 1280, height: Math.min(box.height, 200) },
+        }));
+      } else {
+        navScreenshotBuffer = Buffer.from(await page.screenshot({
+          clip: { x: 0, y: 0, width: 1280, height: 120 },
+        }));
+      }
+    } catch (err) {
+      console.error('Nav screenshot failed:', err);
+    }
   } finally {
     await browser.close();
   }
 
-  // Save screenshot so it can be served via /api/screenshots/
+  // Save screenshots so they can be served via /api/screenshots/
   await fs.mkdir(SCREENSHOTS_DIR, { recursive: true });
   const screenshotFilename = `ux-${id}.png`;
   await fs.writeFile(path.join(SCREENSHOTS_DIR, screenshotFilename), screenshotBuffer);
   const screenshotPath = `/api/screenshots/${screenshotFilename}`;
+
+  let navScreenshotPath: string | null = null;
+  if (navScreenshotBuffer) {
+    const navFilename = `ux-nav-${id}.png`;
+    await fs.writeFile(path.join(SCREENSHOTS_DIR, navFilename), navScreenshotBuffer);
+    navScreenshotPath = `/api/screenshots/${navFilename}`;
+  }
 
   // ── Step 2: Lighthouse audit ──────────────────────────────────────────────
   let lighthouseData: LighthouseMetrics = { ...EMPTY_LIGHTHOUSE };
@@ -194,6 +219,48 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
     console.error('Raw Claude response may have been unparseable');
   }
 
+  // ── Step 4: Claude navigation analysis ───────────────────────────────────
+  let navigationAnalysis: NavigationAnalysis | undefined;
+  if (navScreenshotBuffer && navScreenshotPath) {
+    const navBase64 = navScreenshotBuffer.toString('base64');
+    const navPrompt = `You are a senior UX/navigation expert. Analyze this navigation bar screenshot.
+Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
+{
+  "score": <1-10>,
+  "notes": "<one-sentence overall assessment of the navigation>",
+  "issues": ["2-5 specific navigation problems visible in the screenshot"],
+  "recommendations": ["2-5 concrete, actionable improvements for this navigation"]
+}`;
+    try {
+      const navResponse = await client.messages.create({
+        model: 'claude-opus-4-6',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: navBase64 } },
+            { type: 'text', text: navPrompt },
+          ],
+        }],
+      });
+      const navTextBlock = navResponse.content.find((b) => b.type === 'text');
+      const navRaw = navTextBlock?.type === 'text' ? navTextBlock.text : '{}';
+      const navJsonMatch = navRaw.match(/\{[\s\S]*\}/);
+      const navParsed = JSON.parse(navJsonMatch ? navJsonMatch[0] : '{}');
+      if (navParsed.score) {
+        navigationAnalysis = {
+          screenshotPath: navScreenshotPath,
+          score: navParsed.score,
+          notes: navParsed.notes ?? '',
+          issues: Array.isArray(navParsed.issues) ? navParsed.issues : [],
+          recommendations: Array.isArray(navParsed.recommendations) ? navParsed.recommendations : [],
+        };
+      }
+    } catch (err) {
+      console.error('Claude nav analysis failed:', err);
+    }
+  }
+
   // ── Assemble final result ─────────────────────────────────────────────────
   const result: AnalysisResult = {
     url,
@@ -203,6 +270,7 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
     good: claudeGood,
     bad: claudeBad,
     qualitative: claudeQualitative,
+    navigationAnalysis,
     analyzedAt: new Date().toISOString(),
   };
 
