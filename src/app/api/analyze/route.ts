@@ -182,17 +182,16 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
 
     const textBlock = claudeResponse.content.find((b) => b.type === 'text');
     const rawText = textBlock?.type === 'text' ? textBlock.text : '{}';
-    // Strip possible markdown code fences
-    const jsonStr = rawText
-      .replace(/^```(?:json)?\s*/m, '')
-      .replace(/\s*```\s*$/m, '')
-      .trim();
+    // Extract JSON object robustly (handles markdown fences and leading text)
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : '{}';
     const parsed = JSON.parse(jsonStr);
     claudeGood = Array.isArray(parsed.good) ? parsed.good : [];
     claudeBad = Array.isArray(parsed.bad) ? parsed.bad : [];
     if (parsed.qualitative) claudeQualitative = parsed.qualitative;
   } catch (err) {
     console.error('Claude analysis failed:', err);
+    console.error('Raw Claude response may have been unparseable');
   }
 
   // ── Assemble final result ─────────────────────────────────────────────────
