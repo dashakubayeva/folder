@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
 
   const criteriaNote = isAutoDetect
     ? `First, identify the page type (one of: landing, ecommerce, blog, dashboard, form, portfolio, other) based on what you see, and include it as "pageType" in your JSON. Then apply evaluation criteria appropriate for that type.`
-    : `This is a ${pageTypeHint} page. Evaluate it using these specific criteria: ${PAGE_TYPE_CRITERIA[pageTypeHint] ?? PAGE_TYPE_CRITERIA.other}`;
+    : `This is a ${pageTypeHint} page. Evaluate it using these specific criteria: ${PAGE_TYPE_CRITERIA[pageTypeHint!] ?? PAGE_TYPE_CRITERIA.other}`;
 
   const prompt = `You are a senior UX designer. Analyze this website screenshot and HTML.
 
@@ -339,7 +339,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   }
 
   // ── Step 5: Predicted attention heatmap ──────────────────────────────────
-  let heatmap: AnalysisResult['heatmap'];
+  let heatmap: AnalysisResult['heatmap'] = undefined;
   try {
     const heatmapPrompt = `You are a UX expert predicting where users look on this webpage in the first 5 seconds.
 

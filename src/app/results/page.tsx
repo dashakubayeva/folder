@@ -152,7 +152,7 @@ export default function ResultsPage() {
     );
   }
 
-  const { url, screenshotPath, pageType, lighthouse, axeViolations, good, bad, qualitative, navigationAnalysis, analyzedAt } = result;
+  const { url, screenshotPath, pageType, lighthouse, axeViolations, good, bad, qualitative, navigationAnalysis, heatmap, analyzedAt } = result;
   const hostname = (() => { try { return new URL(url).hostname; } catch { return url; } })();
 
   const PAGE_TYPE_META: Record<string, { label: string; emoji: string }> = {
@@ -208,7 +208,7 @@ export default function ResultsPage() {
               <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
               <span className="text-xs text-slate-400 ml-2 truncate flex-1">{url}</span>
-              {result.heatmap && (
+              {heatmap && (
                 <button
                   onClick={() => setShowHeatmap(s => !s)}
                   className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-md font-medium transition-colors ${
@@ -222,12 +222,12 @@ export default function ResultsPage() {
             <div className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img ref={screenshotImgRef} src={screenshotPath} alt={`Screenshot of ${hostname}`} className="w-full" />
-              {showHeatmap && result.heatmap && (
-                <HeatmapOverlay zones={result.heatmap.zones} imgEl={screenshotImgRef.current} />
+              {showHeatmap && heatmap && (
+                <HeatmapOverlay zones={heatmap.zones} imgEl={screenshotImgRef.current} />
               )}
             </div>
           </div>
-          {showHeatmap && result.heatmap && (
+          {showHeatmap && heatmap && (
             <div className="px-3 py-2.5 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-800">
               <span className="font-semibold">AI Predicted Attention</span> — not real user data.
               Based on visual hierarchy, F-pattern reading, and element prominence.
