@@ -338,6 +338,49 @@ Return ONLY valid JSON (no markdown, no explanation):
     }
   }
 
+  // ── Step 5: Predicted attention heatmap ──────────────────────────────────
+  let heatmap: AnalysisResult['heatmap'];
+  try {
+    const heatmapPrompt = `You are a UX expert predicting where users look on this webpage in the first 5 seconds.
+
+Identify 8-12 attention zones based on:
+- Visual weight: large or high-contrast elements draw the eye first
+- F-pattern / Z-pattern reading behavior (top-left, headline, hero area)
+- CTA buttons and prominent interactive elements
+- Images, especially faces, heroes, or product shots
+- H1 / H2 headlines
+- Navigation bar items
+
+Return ONLY valid JSON (no markdown):
+{
+  "zones": [
+    { "x": <0-100>, "y": <0-100>, "radius": <5-20>, "intensity": <0.3-1.0>, "reason": "<brief label>" }
+  ]
+}
+Coordinates are percentages: x=0,y=0 is top-left; x=100,y=100 is bottom-right. The screenshot is 1280x800px viewport.`;
+
+    const hmResponse = await client.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 800,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
+          { type: 'text', text: heatmapPrompt },
+        ],
+      }],
+    });
+    const hmText = hmResponse.content.find(b => b.type === 'text');
+    const hmRaw = hmText?.type === 'text' ? hmText.text : '{}';
+    const hmJson = hmRaw.match(/\{[\s\S]*\}/);
+    const hmParsed = JSON.parse(hmJson ? hmJson[0] : '{}');
+    if (Array.isArray(hmParsed.zones) && hmParsed.zones.length > 0) {
+      heatmap = { zones: hmParsed.zones };
+    }
+  } catch (err) {
+    console.error('Heatmap generation failed:', err);
+  }
+
   // ── Assemble final result ─────────────────────────────────────────────────
   const result: AnalysisResult = {
     url,
@@ -349,6 +392,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     bad: claudeBad,
     qualitative: claudeQualitative,
     navigationAnalysis,
+    heatmap,
     analyzedAt: new Date().toISOString(),
   };
 

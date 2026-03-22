@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AnalysisResult } from '@/types/analysis';
+import { AnalysisResult, AttentionZone } from '@/types/analysis';
 
 function ScoreRing({ score, label, color }: { score: number; label: string; color: string }) {
   const r = 28;
@@ -72,9 +72,58 @@ function QualBar({ label, score, notes }: { label: string; score: number; notes:
   );
 }
 
+function HeatmapOverlay({ zones, imgEl }: { zones: AttentionZone[]; imgEl: HTMLImageElement | null }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !imgEl) return;
+
+    const draw = () => {
+      canvas.width = imgEl.naturalWidth || imgEl.offsetWidth;
+      canvas.height = imgEl.naturalHeight || imgEl.offsetHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const zone of zones) {
+        const cx = (zone.x / 100) * canvas.width;
+        const cy = (zone.y / 100) * canvas.height;
+        const r = (zone.radius / 100) * canvas.width;
+        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        const alpha = zone.intensity * 0.65;
+        const color = zone.intensity > 0.7 ? '255,30,30'
+                    : zone.intensity > 0.45 ? '255,160,0'
+                    : '60,100,255';
+        grad.addColorStop(0, `rgba(${color},${alpha})`);
+        grad.addColorStop(1, `rgba(${color},0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+
+    if (imgEl.complete && imgEl.naturalWidth > 0) {
+      draw();
+    } else {
+      imgEl.addEventListener('load', draw, { once: true });
+    }
+  }, [zones, imgEl]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 w-full h-full pointer-events-none"
+      style={{ mixBlendMode: 'multiply' }}
+    />
+  );
+}
+
 export default function ResultsPage() {
   const router = useRouter();
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const screenshotImgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     const raw = sessionStorage.getItem('ux-analysis');
@@ -158,11 +207,37 @@ export default function ResultsPage() {
               <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
               <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-              <span className="text-xs text-slate-400 ml-2 truncate">{url}</span>
+              <span className="text-xs text-slate-400 ml-2 truncate flex-1">{url}</span>
+              {result.heatmap && (
+                <button
+                  onClick={() => setShowHeatmap(s => !s)}
+                  className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-md font-medium transition-colors ${
+                    showHeatmap ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                  }`}
+                >
+                  🔥 {showHeatmap ? 'Hide' : 'Attention map'}
+                </button>
+              )}
             </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={screenshotPath} alt={`Screenshot of ${hostname}`} className="w-full" />
+            <div className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img ref={screenshotImgRef} src={screenshotPath} alt={`Screenshot of ${hostname}`} className="w-full" />
+              {showHeatmap && result.heatmap && (
+                <HeatmapOverlay zones={result.heatmap.zones} imgEl={screenshotImgRef.current} />
+              )}
+            </div>
           </div>
+          {showHeatmap && result.heatmap && (
+            <div className="px-3 py-2.5 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-800">
+              <span className="font-semibold">AI Predicted Attention</span> — not real user data.
+              Based on visual hierarchy, F-pattern reading, and element prominence.
+              <div className="flex items-center gap-3 mt-1.5">
+                <span><span className="text-blue-500 font-bold">●</span> Low</span>
+                <span><span className="text-orange-400 font-bold">●</span> Medium</span>
+                <span><span className="text-red-500 font-bold">●</span> High attention</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right: all scores */}

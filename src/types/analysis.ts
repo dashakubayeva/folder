@@ -22,6 +22,14 @@ export interface AxeViolation {
   nodes: number; // how many elements affected
 }
 
+export interface AttentionZone {
+  x: number;         // 0–100, % from left (center of zone)
+  y: number;         // 0–100, % from top (center of zone)
+  radius: number;    // 5–20, % of image width
+  intensity: number; // 0.3–1.0 (1.0 = highest attention)
+  reason: string;    // e.g. "Hero headline", "Primary CTA button"
+}
+
 export interface NavigationAnalysis {
   screenshotPath: string;           // desktop nav (1280px)
   mobileScreenshotPath?: string;    // mobile nav (375px)
@@ -49,5 +57,6 @@ export interface AnalysisResult {
     trustCredibility: QualitativeCategory;
   };
   navigationAnalysis?: NavigationAnalysis;
+  heatmap?: { zones: AttentionZone[] };
   analyzedAt: string;
 }
