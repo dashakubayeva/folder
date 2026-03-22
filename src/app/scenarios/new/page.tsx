@@ -9,10 +9,10 @@ export default function NewScenarioPage() {
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
           </svg>
-          Все сценарии
+          All scenarios
         </Link>
-        <h1 className="text-2xl font-bold text-slate-900">Новый сценарий</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Добавьте шаги и запустите тест</p>
+        <h1 className="text-2xl font-bold text-slate-900">New scenario</h1>
+        <p className="text-sm text-slate-500 mt-0.5">Add steps and run a test</p>
       </div>
       <ScenarioBuilder />
     </div>

@@ -30,7 +30,7 @@ export default function HomePage() {
   }, []);
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Удалить сценарий "${name}"?`)) return;
+    if (!confirm(`Delete scenario "${name}"?`)) return;
     await fetch(`/api/scenarios/${id}`, { method: 'DELETE' });
     setScenarios((prev) => prev.filter((s) => s.id !== id));
   }
@@ -41,13 +41,13 @@ export default function HomePage() {
       const res = await fetch(`/api/scenarios/${id}/run`, { method: 'POST' });
       const result = await res.json();
       if (result.status === 'pass') {
-        addToast('Тест прошёл успешно', 'success');
+        addToast('Test passed', 'success');
       } else {
-        addToast('Тест упал — проверьте результаты', 'error');
+        addToast('Test failed — check results', 'error');
       }
       window.location.href = `/scenarios/${id}/results?last=${result.id}`;
     } catch {
-      addToast('Ошибка при запуске сценария', 'error');
+      addToast('Error running scenario', 'error');
     } finally {
       setRunning(null);
     }
@@ -61,7 +61,7 @@ export default function HomePage() {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
           </svg>
-          Загрузка...
+          Loading...
         </div>
       </div>
     );
@@ -102,9 +102,9 @@ export default function HomePage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 001.357 2.059l.182.088M14.25 3.104c.251.023.501.05.75.082M19.5 14.25v.75a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25v-.75" />
             </svg>
           </div>
-          <h2 className="text-xl font-semibold text-slate-800 mb-2">Нет сценариев</h2>
+          <h2 className="text-xl font-semibold text-slate-800 mb-2">No scenarios</h2>
           <p className="text-slate-500 text-sm mb-7 max-w-xs">
-            Создайте первый сценарий: укажите шаги — клики, заполнение форм, проверки — и запустите автоматический тест.
+            Create your first scenario: define steps — clicks, form fills, assertions — and run an automated test.
           </p>
           <Link
             href="/scenarios/new"
@@ -113,7 +113,7 @@ export default function HomePage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
-            Создать сценарий
+            Create scenario
           </Link>
         </div>
       ) : (
@@ -121,8 +121,8 @@ export default function HomePage() {
           {/* Page header */}
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Сценарии</h1>
-              <p className="text-sm text-slate-500 mt-0.5">{scenarios.length} {scenarios.length === 1 ? 'сценарий' : scenarios.length < 5 ? 'сценария' : 'сценариев'}</p>
+              <h1 className="text-2xl font-bold text-slate-900">Scenarios</h1>
+              <p className="text-sm text-slate-500 mt-0.5">{scenarios.length} {scenarios.length === 1 ? 'scenario' : 'scenarios'}</p>
             </div>
           </div>
 
@@ -146,9 +146,9 @@ export default function HomePage() {
                       <div className="text-sm text-slate-500 truncate mt-0.5">{s.description}</div>
                     )}
                     <div className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
-                      <span>{s.steps.length} {s.steps.length === 1 ? 'шаг' : s.steps.length < 5 ? 'шага' : 'шагов'}</span>
+                      <span>{s.steps.length} {s.steps.length === 1 ? 'step' : 'steps'}</span>
                       <span>·</span>
-                      <span>обновлён {new Date(s.updatedAt).toLocaleDateString('ru')}</span>
+                      <span>updated {new Date(s.updatedAt).toLocaleDateString('en')}</span>
                     </div>
                   </div>
                 </div>
@@ -166,14 +166,14 @@ export default function HomePage() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
                         </svg>
-                        Запуск...
+                        Running...
                       </>
                     ) : (
                       <>
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
                         </svg>
-                        Запустить
+                        Run
                       </>
                     )}
                   </button>
@@ -181,18 +181,18 @@ export default function HomePage() {
                     href={`/scenarios/${s.id}/results`}
                     className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
                   >
-                    Результаты
+                    Results
                   </Link>
                   <Link
                     href={`/scenarios/${s.id}`}
                     className="bg-violet-50 hover:bg-violet-100 text-violet-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
                   >
-                    Изменить
+                    Edit
                   </Link>
                   <button
                     onClick={() => handleDelete(s.id, s.name)}
                     className="p-1.5 text-slate-300 hover:text-red-500 transition-colors rounded-lg"
-                    title="Удалить"
+                    title="Delete"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />

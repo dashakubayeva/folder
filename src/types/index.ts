@@ -42,30 +42,30 @@ export interface RunResult {
 }
 
 export const STEP_LABELS: Record<StepType, string> = {
-  goto: 'Перейти по URL',
-  click: 'Клик',
-  fill: 'Заполнить поле',
-  assert_text: 'Проверить текст',
-  assert_url: 'Проверить URL',
-  wait: 'Ожидание',
-  screenshot: 'Скриншот',
+  goto: 'Go to URL',
+  click: 'Click',
+  fill: 'Fill field',
+  assert_text: 'Assert text',
+  assert_url: 'Assert URL',
+  wait: 'Wait',
+  screenshot: 'Screenshot',
 };
 
 export const STEP_PARAMS: Record<StepType, { key: string; label: string; placeholder: string }[]> = {
   goto: [{ key: 'url', label: 'URL', placeholder: 'https://example.com' }],
-  click: [{ key: 'selector', label: 'Селектор', placeholder: 'button.submit, #login-btn' }],
+  click: [{ key: 'selector', label: 'Selector', placeholder: 'button.submit, #login-btn' }],
   fill: [
-    { key: 'selector', label: 'Селектор', placeholder: 'input[name="email"]' },
-    { key: 'value', label: 'Значение', placeholder: 'user@example.com' },
+    { key: 'selector', label: 'Selector', placeholder: 'input[name="email"]' },
+    { key: 'value', label: 'Value', placeholder: 'user@example.com' },
   ],
   assert_text: [
-    { key: 'selector', label: 'Селектор', placeholder: 'h1, .title' },
-    { key: 'text', label: 'Ожидаемый текст', placeholder: 'Добро пожаловать' },
+    { key: 'selector', label: 'Selector', placeholder: 'h1, .title' },
+    { key: 'text', label: 'Expected text', placeholder: 'Welcome' },
   ],
-  assert_url: [{ key: 'url', label: 'URL (подстрока)', placeholder: '/dashboard' }],
+  assert_url: [{ key: 'url', label: 'URL (substring)', placeholder: '/dashboard' }],
   wait: [
-    { key: 'selector', label: 'Селектор (или оставьте пустым для ms)', placeholder: '.loaded' },
-    { key: 'ms', label: 'Миллисекунды', placeholder: '1000' },
+    { key: 'selector', label: 'Selector (or leave empty for ms)', placeholder: '.loaded' },
+    { key: 'ms', label: 'Milliseconds', placeholder: '1000' },
   ],
   screenshot: [],
 };

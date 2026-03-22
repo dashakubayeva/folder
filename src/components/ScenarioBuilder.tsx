@@ -42,11 +42,11 @@ export default function ScenarioBuilder({ initial }: Props) {
 
   async function handleSave() {
     if (!name.trim()) {
-      setError('Введите название сценария');
+      setError('Enter scenario name');
       return;
     }
     if (steps.length === 0) {
-      setError('Добавьте хотя бы один шаг');
+      setError('Add at least one step');
       return;
     }
     setError('');
@@ -61,11 +61,11 @@ export default function ScenarioBuilder({ initial }: Props) {
         body: JSON.stringify({ name, description, steps }),
       });
 
-      if (!res.ok) throw new Error('Ошибка сохранения');
+      if (!res.ok) throw new Error('Save error');
       router.push('/');
       router.refresh();
     } catch {
-      setError('Ошибка при сохранении');
+      setError('Error while saving');
     } finally {
       setSaving(false);
     }
@@ -76,22 +76,22 @@ export default function ScenarioBuilder({ initial }: Props) {
       {/* Info card */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Название *</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">Name *</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Регистрация пользователя"
+            placeholder="User registration"
             className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Описание</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>
           <input
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Проверяет полный флоу регистрации нового пользователя"
+            placeholder="Checks the full registration flow for a new user"
             className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition"
           />
         </div>
@@ -101,7 +101,7 @@ export default function ScenarioBuilder({ initial }: Props) {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-slate-700">
-            Шаги
+            Steps
             {steps.length > 0 && (
               <span className="ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full bg-violet-100 text-violet-700 text-xs font-bold">
                 {steps.length}
@@ -138,7 +138,7 @@ export default function ScenarioBuilder({ initial }: Props) {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
-          Добавить шаг
+          Add step
         </button>
       </div>
 
@@ -163,17 +163,17 @@ export default function ScenarioBuilder({ initial }: Props) {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
               </svg>
-              Сохранение...
+              Saving...
             </>
           ) : (
-            initial ? 'Сохранить изменения' : 'Создать сценарий'
+            initial ? 'Save changes' : 'Create scenario'
           )}
         </button>
         <button
           onClick={() => router.push('/')}
           className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2.5 rounded-xl font-medium text-sm transition-colors"
         >
-          Отмена
+          Cancel
         </button>
       </div>
     </div>

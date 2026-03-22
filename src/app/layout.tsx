@@ -3,12 +3,12 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Flow Tester',
-  description: 'Визуальное тестирование пользовательских сценариев',
+  description: 'Visual testing of user flows',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru">
+    <html lang="en">
       <body className="bg-slate-50 min-h-screen">
         <nav className="bg-slate-900 px-6 py-0 sticky top-0 z-40">
           <div className="max-w-5xl mx-auto flex items-center justify-between h-14">
@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
               </svg>
-              Новый сценарий
+              New scenario
             </a>
           </div>
         </nav>
