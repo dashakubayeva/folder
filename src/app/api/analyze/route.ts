@@ -74,8 +74,9 @@ export async function POST(req: NextRequest) {
   let axeViolations: AxeViolation[] = [];
   const browser = await chromium.launch({
     headless: true,
-    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-      || '/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome',
+    ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH && {
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+    }),
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });
   try {
