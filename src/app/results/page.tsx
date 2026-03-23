@@ -363,7 +363,9 @@ export default function ResultsPage() {
           </div>
 
           {/* 2. What's working / Needs improvement */}
-          {aiAvailable && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:break-inside-avoid">
+          {aiAvailable && <>
+          <p className="text-xs text-slate-400 -mt-2 mb-0">AI-identified strengths and issues based on screenshot and code analysis</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:break-inside-avoid">
             <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
               <h2 className="text-sm font-semibold text-emerald-800 mb-3 flex items-center gap-1.5">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -398,11 +400,13 @@ export default function ResultsPage() {
                 {bad.length === 0 && <li className="text-sm text-red-600 italic">No data</li>}
               </ul>
             </div>
-          </div>}
+          </div>
+          </>}
 
           {/* 3. Design & Usability */}
           {aiAvailable && <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 print:break-inside-avoid">
-            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Design &amp; Usability</h2>
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-1">Design &amp; Usability</h2>
+            <p className="text-xs text-slate-400 mb-4">AI scores (1–10) for key visual and interaction dimensions, each with a specific finding</p>
             <div className="space-y-4">
               <QualBar label="Visual Design" score={qualitative.visualDesign.score} notes={qualitative.visualDesign.notes} />
               <QualBar label="Navigation & Menus" score={qualitative.navigation.score} notes={qualitative.navigation.notes} />
@@ -414,7 +418,8 @@ export default function ResultsPage() {
 
           {/* 4. Site Health Scores */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 print:break-inside-avoid">
-            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Site Health Scores</h2>
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-1">Site Health Scores</h2>
+            <p className="text-xs text-slate-400 mb-4">Measured by Lighthouse — scores from 0 to 100, higher is better</p>
             <div className="grid grid-cols-4 gap-4">
               <ScoreRing score={lighthouse.performance} label="Speed" />
               <ScoreRing score={lighthouse.accessibility} label="Accessibility" />
