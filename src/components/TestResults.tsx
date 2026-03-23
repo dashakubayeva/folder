@@ -68,10 +68,10 @@ export default function TestResults({ result, expanded = false }: Props) {
             </div>
             <div>
               <div className={`font-semibold text-sm ${isPassed ? 'text-emerald-800' : 'text-red-800'}`}>
-                {isPassed ? 'Тест прошёл' : 'Тест упал'}
+                {isPassed ? 'Test passed' : 'Test failed'}
               </div>
               <div className="text-xs text-slate-500 mt-0.5">
-                {new Date(result.startedAt).toLocaleString('ru')} · {result.durationMs}ms
+                {new Date(result.startedAt).toLocaleString('en')} · {result.durationMs}ms
               </div>
             </div>
           </div>
@@ -79,9 +79,9 @@ export default function TestResults({ result, expanded = false }: Props) {
           <div className="flex items-center gap-4">
             {/* Counts */}
             <div className="flex items-center gap-3 text-xs font-medium">
-              <span className="text-emerald-700">{passCount} прошло</span>
-              {failCount > 0 && <span className="text-red-700">{failCount} упало</span>}
-              {skipCount > 0 && <span className="text-slate-400">{skipCount} пропущено</span>}
+              <span className="text-emerald-700">{passCount} passed</span>
+              {failCount > 0 && <span className="text-red-700">{failCount} failed</span>}
+              {skipCount > 0 && <span className="text-slate-400">{skipCount} skipped</span>}
             </div>
             {/* Chevron */}
             <svg

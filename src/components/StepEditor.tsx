@@ -113,7 +113,7 @@ export default function StepEditor({ step, index, total, onChange, onDelete, onM
             onClick={onMoveUp}
             disabled={index === 0}
             className="p-1.5 text-slate-300 hover:text-slate-600 disabled:opacity-20 rounded-lg hover:bg-slate-50 transition"
-            title="Вверх"
+            title="Move up"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
@@ -123,7 +123,7 @@ export default function StepEditor({ step, index, total, onChange, onDelete, onM
             onClick={onMoveDown}
             disabled={index === total - 1}
             className="p-1.5 text-slate-300 hover:text-slate-600 disabled:opacity-20 rounded-lg hover:bg-slate-50 transition"
-            title="Вниз"
+            title="Move down"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
@@ -132,7 +132,7 @@ export default function StepEditor({ step, index, total, onChange, onDelete, onM
           <button
             onClick={onDelete}
             className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg hover:bg-red-50 transition"
-            title="Удалить шаг"
+            title="Delete step"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -147,7 +147,7 @@ export default function StepEditor({ step, index, total, onChange, onDelete, onM
             <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
           </svg>
-          Скриншот будет сделан автоматически
+          Screenshot will be taken automatically
         </p>
       ) : (
         <div className="ml-10 space-y-2.5">

@@ -1,209 +1,191 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Scenario } from '@/types';
-import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { AnalysisResult } from '@/types/analysis';
 
-type Toast = { id: number; message: string; type: 'success' | 'error' };
+const LOADING_STEPS = [
+  'Capturing screenshot…',
+  'Running Lighthouse audit…',
+  'Checking performance…',
+  'Analyzing accessibility…',
+  'AI reviewing your UX…',
+  'Generating report…',
+];
 
 export default function HomePage() {
-  const [scenarios, setScenarios] = useState<Scenario[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [running, setRunning] = useState<string | null>(null);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-
-  function addToast(message: string, type: 'success' | 'error') {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
-  }
-
-  async function fetchScenarios() {
-    const res = await fetch('/api/scenarios');
-    const data = await res.json();
-    setScenarios(data);
-    setLoading(false);
-  }
+  const router = useRouter();
+  const [url, setUrl] = useState('');
+  const [pageTypeHint, setPageTypeHint] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [stepLabel, setStepLabel] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchScenarios();
-  }, []);
+    if (!loading) { setProgress(0); setStepLabel(''); return; }
+    let p = 0;
+    const interval = setInterval(() => {
+      p = p >= 88 ? p + 0.2 : p >= 70 ? p + 0.8 : p + 1.8;
+      if (p > 95) p = 95;
+      setProgress(p);
+      const stepIdx = Math.min(
+        Math.floor((p / 95) * (LOADING_STEPS.length - 1)),
+        LOADING_STEPS.length - 1
+      );
+      setStepLabel(LOADING_STEPS[stepIdx]);
+    }, 500);
+    return () => clearInterval(interval);
+  }, [loading]);
 
-  async function handleDelete(id: string, name: string) {
-    if (!confirm(`Удалить сценарий "${name}"?`)) return;
-    await fetch(`/api/scenarios/${id}`, { method: 'DELETE' });
-    setScenarios((prev) => prev.filter((s) => s.id !== id));
-  }
+  async function handleAnalyze(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
 
-  async function handleRun(id: string) {
-    setRunning(id);
+    let normalized = url.trim();
+    if (!normalized) return;
+    if (!/^https?:\/\//i.test(normalized)) {
+      normalized = 'https://' + normalized;
+    }
+
+    setLoading(true);
+    setProgress(0);
+
     try {
-      const res = await fetch(`/api/scenarios/${id}/run`, { method: 'POST' });
-      const result = await res.json();
-      if (result.status === 'pass') {
-        addToast('Тест прошёл успешно', 'success');
-      } else {
-        addToast('Тест упал — проверьте результаты', 'error');
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: normalized, pageTypeHint: pageTypeHint || undefined }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `Request failed (${res.status})`);
       }
-      window.location.href = `/scenarios/${id}/results?last=${result.id}`;
-    } catch {
-      addToast('Ошибка при запуске сценария', 'error');
-    } finally {
-      setRunning(null);
+
+      const result: AnalysisResult = await res.json();
+      sessionStorage.setItem('ux-analysis', JSON.stringify(result));
+      setProgress(100);
+      setTimeout(() => router.push('/results'), 300);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Analysis failed. Please try again.');
+      setLoading(false);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <div className="flex items-center gap-3 text-slate-400">
-          <svg className="w-5 h-5 animate-spin-smooth" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-          </svg>
-          Загрузка...
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <>
-      {/* Toast notifications */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={`animate-slide-up flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg text-sm font-medium pointer-events-auto ${
-              t.type === 'success'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-red-600 text-white'
-            }`}
+    <div className="flex flex-col items-center justify-center min-h-[70vh] text-center px-4">
+      {/* Icon */}
+      <div className="w-16 h-16 rounded-2xl bg-violet-600 flex items-center justify-center mb-6 shadow-lg shadow-violet-200">
+        <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </div>
+
+      <h1 className="text-4xl font-bold text-slate-900 mb-3 tracking-tight">Viewra</h1>
+      <p className="text-slate-500 text-lg mb-10 max-w-md">
+        Enter any website URL to get an instant AI-powered UX audit — performance, accessibility, and design quality.
+      </p>
+
+      <form onSubmit={handleAnalyze} className="w-full max-w-xl">
+        <div className="flex gap-3">
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://example.com"
+            disabled={loading}
+            className="flex-1 px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:opacity-50 shadow-sm"
+          />
+          <button
+            type="submit"
+            disabled={loading || !url.trim()}
+            className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-3 rounded-xl font-medium text-sm transition-colors disabled:opacity-50 shadow-sm whitespace-nowrap"
           >
-            {t.type === 'success' ? (
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
+            {loading ? (
+              <>
+                <svg className="w-4 h-4 animate-spin-smooth" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+                Analyzing…
+              </>
             ) : (
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                </svg>
+                Analyze
+              </>
             )}
-            {t.message}
+          </button>
+        </div>
+
+        {/* Page type selector */}
+        <div className="mt-3 flex items-center gap-2">
+          <label className="text-xs text-slate-400 whitespace-nowrap">Page type:</label>
+          <select
+            value={pageTypeHint}
+            onChange={(e) => setPageTypeHint(e.target.value)}
+            disabled={loading}
+            className="flex-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50 shadow-sm"
+          >
+            <option value="">Auto-detect</option>
+            <option value="landing">Landing page</option>
+            <option value="ecommerce">E-commerce / Product</option>
+            <option value="blog">Blog / Article</option>
+            <option value="dashboard">Dashboard / App</option>
+            <option value="form">Form / Contact</option>
+            <option value="portfolio">Portfolio</option>
+          </select>
+        </div>
+
+        {/* Loading progress */}
+        {loading && (
+          <div className="mt-5 animate-fade-in">
+            <div className="flex justify-between items-center mb-1.5">
+              <p className="text-sm text-violet-600 font-medium">{stepLabel}</p>
+              <p className="text-xs text-slate-400">{Math.round(progress)}%</p>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-2">
+              <div
+                className="bg-violet-600 h-2 rounded-full transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="text-xs text-slate-400 mt-2">This usually takes 30–60 seconds</p>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="mt-4 flex items-center gap-2 bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-xl text-sm animate-fade-in">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            {error}
+          </div>
+        )}
+      </form>
+
+      {/* What we check */}
+      <div className="mt-16 grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-xl text-left">
+        {[
+          { icon: '⚡', label: 'Performance', sub: 'LCP, CLS, FCP' },
+          { icon: '♿', label: 'Accessibility', sub: 'WCAG compliance' },
+          { icon: '🔍', label: 'SEO', sub: 'Discoverability' },
+          { icon: '🎨', label: 'Visual Design', sub: 'Hierarchy & style' },
+          { icon: '🧭', label: 'Navigation', sub: 'Wayfinding' },
+          { icon: '🎯', label: 'Calls to Action', sub: 'Conversion clarity' },
+        ].map((item) => (
+          <div key={item.label} className="bg-white rounded-xl border border-slate-100 p-3.5 shadow-sm">
+            <div className="text-xl mb-1">{item.icon}</div>
+            <div className="font-medium text-slate-800 text-sm">{item.label}</div>
+            <div className="text-xs text-slate-400 mt-0.5">{item.sub}</div>
           </div>
         ))}
       </div>
-
-      {scenarios.length === 0 ? (
-        /* Empty state */
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-violet-100 flex items-center justify-center mb-5">
-            <svg className="w-8 h-8 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 001.357 2.059l.182.088M14.25 3.104c.251.023.501.05.75.082M19.5 14.25v.75a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25v-.75" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-semibold text-slate-800 mb-2">Нет сценариев</h2>
-          <p className="text-slate-500 text-sm mb-7 max-w-xs">
-            Создайте первый сценарий: укажите шаги — клики, заполнение форм, проверки — и запустите автоматический тест.
-          </p>
-          <Link
-            href="/scenarios/new"
-            className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-2.5 rounded-xl font-medium text-sm transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            Создать сценарий
-          </Link>
-        </div>
-      ) : (
-        <div>
-          {/* Page header */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">Сценарии</h1>
-              <p className="text-sm text-slate-500 mt-0.5">{scenarios.length} {scenarios.length === 1 ? 'сценарий' : scenarios.length < 5 ? 'сценария' : 'сценариев'}</p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {scenarios.map((s) => (
-              <div
-                key={s.id}
-                className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex items-center justify-between gap-4 hover:border-slate-300 transition-colors animate-fade-in"
-              >
-                <div className="flex items-center gap-4 flex-1 min-w-0">
-                  {/* Icon */}
-                  <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                  </div>
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-slate-900 truncate">{s.name}</div>
-                    {s.description && (
-                      <div className="text-sm text-slate-500 truncate mt-0.5">{s.description}</div>
-                    )}
-                    <div className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
-                      <span>{s.steps.length} {s.steps.length === 1 ? 'шаг' : s.steps.length < 5 ? 'шага' : 'шагов'}</span>
-                      <span>·</span>
-                      <span>обновлён {new Date(s.updatedAt).toLocaleDateString('ru')}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => handleRun(s.id)}
-                    disabled={running === s.id}
-                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
-                  >
-                    {running === s.id ? (
-                      <>
-                        <svg className="w-3.5 h-3.5 animate-spin-smooth" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                        </svg>
-                        Запуск...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
-                        </svg>
-                        Запустить
-                      </>
-                    )}
-                  </button>
-                  <Link
-                    href={`/scenarios/${s.id}/results`}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Результаты
-                  </Link>
-                  <Link
-                    href={`/scenarios/${s.id}`}
-                    className="bg-violet-50 hover:bg-violet-100 text-violet-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Изменить
-                  </Link>
-                  <button
-                    onClick={() => handleDelete(s.id, s.name)}
-                    className="p-1.5 text-slate-300 hover:text-red-500 transition-colors rounded-lg"
-                    title="Удалить"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 }
