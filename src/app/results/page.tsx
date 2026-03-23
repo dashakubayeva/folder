@@ -12,7 +12,7 @@ function scoreStatus(pct: number): { word: string; color: string } {
 }
 
 // ── Overall grade ─────────────────────────────────────────────────────────────
-function calcOverall(lh: AnalysisResult['lighthouse'], qual: AnalysisResult['qualitative']) {
+function calcOverall(lh: AnalysisResult['lighthouse'], qual: AnalysisResult['qualitative'], aiAvailable?: boolean) {
   const qualAvg = (
     qual.visualDesign.score +
     qual.navigation.score +
@@ -21,12 +21,9 @@ function calcOverall(lh: AnalysisResult['lighthouse'], qual: AnalysisResult['qua
     qual.trustCredibility.score
   ) / 5 * 10; // scale 1-10 → 0-100
 
-  const score = Math.round(
-    lh.performance  * 0.25 +
-    lh.accessibility * 0.20 +
-    lh.seo          * 0.15 +
-    qualAvg         * 0.40
-  );
+  const score = aiAvailable
+    ? Math.round(lh.performance * 0.25 + lh.accessibility * 0.20 + lh.seo * 0.15 + qualAvg * 0.40)
+    : Math.round(lh.performance * 0.40 + lh.accessibility * 0.35 + lh.seo * 0.25);
 
   let grade: string, verdict: string, bg: string, text: string;
   if (score >= 90) { grade = 'A'; verdict = 'Excellent — this site delivers a great user experience'; bg = 'bg-emerald-50'; text = 'text-emerald-700'; }
@@ -189,9 +186,9 @@ export default function ResultsPage() {
     );
   }
 
-  const { url, screenshotPath, pageType, lighthouse, axeViolations, good, bad, qualitative, navigationAnalysis, heatmap, analyzedAt } = result;
+  const { url, screenshotPath, pageType, lighthouse, axeViolations, good, bad, qualitative, navigationAnalysis, heatmap, analyzedAt, aiAvailable } = result;
   const hostname = (() => { try { return new URL(url).hostname; } catch { return url; } })();
-  const overall = calcOverall(lighthouse, qualitative);
+  const overall = calcOverall(lighthouse, qualitative, aiAvailable);
 
   const PAGE_TYPE_META: Record<string, { label: string; emoji: string }> = {
     landing:   { label: 'Landing page',   emoji: '🎯' },
@@ -366,7 +363,7 @@ export default function ResultsPage() {
           </div>
 
           {/* 2. What's working / Needs improvement */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:break-inside-avoid">
+          {aiAvailable && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:break-inside-avoid">
             <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
               <h2 className="text-sm font-semibold text-emerald-800 mb-3 flex items-center gap-1.5">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -401,10 +398,10 @@ export default function ResultsPage() {
                 {bad.length === 0 && <li className="text-sm text-red-600 italic">No data</li>}
               </ul>
             </div>
-          </div>
+          </div>}
 
           {/* 3. Design & Usability */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 print:break-inside-avoid">
+          {aiAvailable && <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 print:break-inside-avoid">
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Design &amp; Usability</h2>
             <div className="space-y-4">
               <QualBar label="Visual Design" score={qualitative.visualDesign.score} notes={qualitative.visualDesign.notes} />
@@ -413,7 +410,7 @@ export default function ResultsPage() {
               <QualBar label="Buttons & Calls to Action" score={qualitative.callsToAction.score} notes={qualitative.callsToAction.notes} />
               <QualBar label="Trust & Credibility" score={qualitative.trustCredibility.score} notes={qualitative.trustCredibility.notes} />
             </div>
-          </div>
+          </div>}
 
           {/* 4. Site Health Scores */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 print:break-inside-avoid">

@@ -253,6 +253,7 @@ Include 3-6 items in good and bad. Order bad items by priority (critical first).
   let claudeGood: PrioritizedItem[] = [];
   let claudeBad: PrioritizedItem[] = [];
   let detectedPageType: string | undefined;
+  let aiAvailable = false;
   let claudeQualitative: AnalysisResult['qualitative'] = {
     visualDesign: { score: 5, notes: 'Analysis unavailable' },
     navigation: { score: 5, notes: 'Analysis unavailable' },
@@ -295,6 +296,7 @@ Include 3-6 items in good and bad. Order bad items by priority (critical first).
     claudeBad = Array.isArray(parsed.bad) ? toItems(parsed.bad) : [];
     detectedPageType = parsed.pageType;
     if (parsed.qualitative) claudeQualitative = parsed.qualitative;
+    aiAvailable = true;
   } catch (err) {
     console.error('Claude analysis failed:', err);
     console.error('Raw Claude response may have been unparseable');
@@ -419,6 +421,7 @@ Coordinates are percentages: x=0,y=0 is top-left; x=100,y=100 is bottom-right. T
     navigationAnalysis,
     heatmap,
     analyzedAt: new Date().toISOString(),
+    aiAvailable,
   };
 
   return NextResponse.json(result);

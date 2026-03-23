@@ -65,4 +65,5 @@ export interface AnalysisResult {
   navigationAnalysis?: NavigationAnalysis;
   heatmap?: { zones: AttentionZone[] };
   analyzedAt: string;
+  aiAvailable?: boolean;
 }
