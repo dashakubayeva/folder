@@ -26,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               href="/scenarios"
               className="flex items-center gap-1.5 text-slate-400 hover:text-white px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors"
             >
-              Flow Tester
+              Scenarios
             </a>
           </div>
         </nav>
