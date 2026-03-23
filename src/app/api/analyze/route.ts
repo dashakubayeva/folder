@@ -263,7 +263,7 @@ Include 3-6 items in good and bad. Order bad items by priority (critical first).
 
   try {
     const claudeResponse = await client.messages.create({
-      model: 'claude-opus-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       messages: [
         {
@@ -339,7 +339,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       content.push({ type: 'text', text: navPrompt });
 
       const navResponse = await client.messages.create({
-        model: 'claude-opus-4-6',
+        model: 'claude-sonnet-4-6',
         max_tokens: 1000,
         messages: [{ role: 'user', content }],
       });
@@ -384,7 +384,7 @@ Return ONLY valid JSON (no markdown):
 Coordinates are percentages: x=0,y=0 is top-left; x=100,y=100 is bottom-right. The screenshot is 1280x800px viewport.`;
 
     const hmResponse = await client.messages.create({
-      model: 'claude-opus-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 800,
       messages: [{
         role: 'user',
