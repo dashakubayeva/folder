@@ -10,7 +10,10 @@ const LOADING_STEPS = [
   'Checking performance…',
   'Analyzing accessibility…',
   'AI reviewing your UX…',
-  'Generating report…',
+  'Analyzing navigation…',
+  'Analyzing typography…',
+  'Measuring first impression…',
+  'Reviewing copy…',
 ];
 
 export default function HomePage() {
@@ -178,6 +181,9 @@ export default function HomePage() {
           { icon: '🎨', label: 'Visual Design', sub: 'Hierarchy & style' },
           { icon: '🧭', label: 'Navigation', sub: 'Wayfinding' },
           { icon: '🎯', label: 'Calls to Action', sub: 'Conversion clarity' },
+          { icon: '🔤', label: 'Typography', sub: 'Fonts & readability' },
+          { icon: '⚡', label: 'First Impression', sub: 'Above the fold' },
+          { icon: '✍️', label: 'Copywriting', sub: 'Clarity & headlines' },
         ].map((item) => (
           <div key={item.label} className="bg-white rounded-xl border border-slate-100 p-3.5 shadow-sm">
             <div className="text-xl mb-1">{item.icon}</div>

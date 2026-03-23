@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
 const SCREENSHOTS_DIR = path.join(process.cwd(), 'data', 'screenshots');
-import { AnalysisResult, AxeViolation, LighthouseMetrics, NavigationAnalysis, PageType, PrioritizedItem } from '@/types/analysis';
+import { AnalysisResult, AxeViolation, CopywritingAnalysis, FirstImpressionAnalysis, LighthouseMetrics, NavigationAnalysis, PageType, PrioritizedItem, TypographyAnalysis } from '@/types/analysis';
 
 const client = new Anthropic();
 
@@ -407,6 +407,153 @@ Coordinates are percentages: x=0,y=0 is top-left; x=100,y=100 is bottom-right. T
     console.error('Heatmap generation failed:', err);
   }
 
+  // ── Step 6: Typography & Readability ─────────────────────────────────────
+  let typographyAnalysis: TypographyAnalysis | undefined;
+  try {
+    const typoPrompt = `You are a senior typography and readability expert. Analyze this webpage screenshot and HTML.
+
+Evaluate these specific criteria:
+- Heading hierarchy: Is there a clear H1? Do H2/H3 headings follow a logical visual scale?
+- Font legibility: Are body fonts appropriately sized (≥16px), with good contrast?
+- Line length: Is body text constrained to ~45-75 characters per line for readability?
+- Line height: Does text have sufficient breathing room (line-height ≥ 1.4)?
+- Text density: Is there appropriate whitespace between sections, or is content cramped?
+- Typographic consistency: Are fonts used consistently, or is there a mix of many styles?
+
+HTML snippet:
+${html.slice(0, 10000)}
+
+Return ONLY valid JSON (no markdown):
+{
+  "score": <1-10>,
+  "notes": "<one sentence summarizing typography quality>",
+  "issues": ["2-5 specific typography/readability problems found"],
+  "recommendations": ["2-5 concrete actionable improvements"]
+}`;
+
+    const typoResponse = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 800,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
+          { type: 'text', text: typoPrompt },
+        ],
+      }],
+    });
+    const typoText = typoResponse.content.find(b => b.type === 'text');
+    const typoRaw = typoText?.type === 'text' ? typoText.text : '{}';
+    const typoJson = typoRaw.match(/\{[\s\S]*\}/);
+    const typoParsed = JSON.parse(typoJson ? typoJson[0] : '{}');
+    if (typoParsed.score) {
+      typographyAnalysis = {
+        score: typoParsed.score,
+        notes: typoParsed.notes ?? '',
+        issues: Array.isArray(typoParsed.issues) ? typoParsed.issues : [],
+        recommendations: Array.isArray(typoParsed.recommendations) ? typoParsed.recommendations : [],
+      };
+    }
+  } catch (err) {
+    console.error('Typography analysis failed:', err);
+  }
+
+  // ── Step 7: First Impression (Above the Fold) ─────────────────────────────
+  let firstImpressionAnalysis: FirstImpressionAnalysis | undefined;
+  try {
+    const firstImpressionPrompt = `You are a conversion rate optimization expert. This screenshot shows exactly what a user sees in the first 3-5 seconds on this page (1280×800 viewport, no scrolling).
+
+Evaluate the first impression:
+- Is the value proposition immediately clear? Can a new visitor understand what this site offers?
+- Is the primary headline compelling and visible?
+- Is there a clear primary CTA visible above the fold?
+- Does the visual hierarchy guide the eye naturally (headline → subheading → CTA)?
+- Does the hero/banner section communicate trust and professionalism?
+- Is important content competing with visual noise or distractions?
+
+Return ONLY valid JSON (no markdown):
+{
+  "score": <1-10>,
+  "verdict": "<one sentence: what is the overall first impression?>",
+  "strengths": ["2-4 things that work well above the fold"],
+  "issues": ["2-4 problems that hurt the first impression"]
+}`;
+
+    const fiResponse = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 800,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
+          { type: 'text', text: firstImpressionPrompt },
+        ],
+      }],
+    });
+    const fiText = fiResponse.content.find(b => b.type === 'text');
+    const fiRaw = fiText?.type === 'text' ? fiText.text : '{}';
+    const fiJson = fiRaw.match(/\{[\s\S]*\}/);
+    const fiParsed = JSON.parse(fiJson ? fiJson[0] : '{}');
+    if (fiParsed.score) {
+      firstImpressionAnalysis = {
+        score: fiParsed.score,
+        verdict: fiParsed.verdict ?? '',
+        strengths: Array.isArray(fiParsed.strengths) ? fiParsed.strengths : [],
+        issues: Array.isArray(fiParsed.issues) ? fiParsed.issues : [],
+      };
+    }
+  } catch (err) {
+    console.error('First impression analysis failed:', err);
+  }
+
+  // ── Step 8: Copywriting Analysis ──────────────────────────────────────────
+  let copywritingAnalysis: CopywritingAnalysis | undefined;
+  try {
+    const copyPrompt = `You are a senior copywriter and conversion specialist. Analyze the text content of this webpage.
+
+Evaluate the copy across these dimensions:
+- Headline quality: Is the main headline clear, benefit-focused, and compelling?
+- Value proposition: Is it immediately obvious what this product/service does and for whom?
+- Clarity vs jargon: Is the language plain and accessible, or full of buzzwords and corporate speak?
+- Reading level: Is the copy appropriately simple (aim for Grade 8-10 reading level for general audiences)?
+- CTA copy: Are call-to-action buttons/links specific and action-oriented (e.g. "Start free trial" vs "Submit")?
+- Tone consistency: Does the tone stay consistent throughout the page?
+
+HTML text content:
+${html.slice(0, 15000)}
+
+Return ONLY valid JSON (no markdown):
+{
+  "score": <1-10>,
+  "notes": "<one sentence summarizing overall copy quality>",
+  "issues": ["2-5 specific copy problems (e.g. vague headline, jargon, weak CTA text)"],
+  "suggestions": ["2-5 concrete improvements with example rewrites where possible"]
+}`;
+
+    const copyResponse = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1000,
+      messages: [{
+        role: 'user',
+        content: [{ type: 'text', text: copyPrompt }],
+      }],
+    });
+    const copyText = copyResponse.content.find(b => b.type === 'text');
+    const copyRaw = copyText?.type === 'text' ? copyText.text : '{}';
+    const copyJson = copyRaw.match(/\{[\s\S]*\}/);
+    const copyParsed = JSON.parse(copyJson ? copyJson[0] : '{}');
+    if (copyParsed.score) {
+      copywritingAnalysis = {
+        score: copyParsed.score,
+        notes: copyParsed.notes ?? '',
+        issues: Array.isArray(copyParsed.issues) ? copyParsed.issues : [],
+        suggestions: Array.isArray(copyParsed.suggestions) ? copyParsed.suggestions : [],
+      };
+    }
+  } catch (err) {
+    console.error('Copywriting analysis failed:', err);
+  }
+
   // ── Assemble final result ─────────────────────────────────────────────────
   const result: AnalysisResult = {
     url,
@@ -419,6 +566,9 @@ Coordinates are percentages: x=0,y=0 is top-left; x=100,y=100 is bottom-right. T
     bad: claudeBad,
     qualitative: claudeQualitative,
     navigationAnalysis,
+    typographyAnalysis,
+    firstImpressionAnalysis,
+    copywritingAnalysis,
     heatmap,
     analyzedAt: new Date().toISOString(),
     aiAvailable,

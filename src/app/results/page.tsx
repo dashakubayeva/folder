@@ -186,7 +186,7 @@ export default function ResultsPage() {
     );
   }
 
-  const { url, screenshotPath, pageType, lighthouse, axeViolations, good, bad, qualitative, navigationAnalysis, heatmap, analyzedAt, aiAvailable } = result;
+  const { url, screenshotPath, pageType, lighthouse, axeViolations, good, bad, qualitative, navigationAnalysis, typographyAnalysis, firstImpressionAnalysis, copywritingAnalysis, heatmap, analyzedAt, aiAvailable } = result;
   const hostname = (() => { try { return new URL(url).hostname; } catch { return url; } })();
   const overall = calcOverall(lighthouse, qualitative, aiAvailable);
 
@@ -531,6 +531,138 @@ export default function ResultsPage() {
                   </li>
                 ))}
                 {navigationAnalysis.recommendations.length === 0 && <li className="text-sm text-slate-400 italic">No recommendations</li>}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── First Impression ── */}
+      {firstImpressionAnalysis && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">First Impression</h2>
+              <p className="text-xs text-slate-400 mt-0.5">What users see above the fold in the first 5 seconds</p>
+            </div>
+            <div className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full ${
+              firstImpressionAnalysis.score >= 8 ? 'bg-emerald-100 text-emerald-700' :
+              firstImpressionAnalysis.score >= 5 ? 'bg-amber-100 text-amber-700' :
+              'bg-red-100 text-red-700'
+            }`}>
+              {firstImpressionAnalysis.score >= 8 ? 'Great' : firstImpressionAnalysis.score >= 5 ? 'OK' : 'Poor'} — {firstImpressionAnalysis.score}/10
+            </div>
+          </div>
+          <p className="text-sm text-slate-500 italic">{firstImpressionAnalysis.verdict}</p>
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-2">What works</h3>
+              <ul className="space-y-2">
+                {firstImpressionAnalysis.strengths.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="text-emerald-500 mt-0.5 flex-shrink-0">✓</span>{item}
+                  </li>
+                ))}
+                {firstImpressionAnalysis.strengths.length === 0 && <li className="text-sm text-slate-400 italic">None identified</li>}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2">Issues above the fold</h3>
+              <ul className="space-y-2">
+                {firstImpressionAnalysis.issues.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="text-red-400 mt-0.5 flex-shrink-0">✗</span>{item}
+                  </li>
+                ))}
+                {firstImpressionAnalysis.issues.length === 0 && <li className="text-sm text-slate-400 italic">No issues found</li>}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Typography Analysis ── */}
+      {typographyAnalysis && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Typography & Readability</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Fonts, heading hierarchy, line length, and text clarity</p>
+            </div>
+            <div className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full ${
+              typographyAnalysis.score >= 8 ? 'bg-emerald-100 text-emerald-700' :
+              typographyAnalysis.score >= 5 ? 'bg-amber-100 text-amber-700' :
+              'bg-red-100 text-red-700'
+            }`}>
+              {typographyAnalysis.score >= 8 ? 'Great' : typographyAnalysis.score >= 5 ? 'OK' : 'Poor'} — {typographyAnalysis.score}/10
+            </div>
+          </div>
+          <p className="text-sm text-slate-500 italic">{typographyAnalysis.notes}</p>
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2">Issues found</h3>
+              <ul className="space-y-2">
+                {typographyAnalysis.issues.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="text-red-400 mt-0.5 flex-shrink-0">✗</span>{item}
+                  </li>
+                ))}
+                {typographyAnalysis.issues.length === 0 && <li className="text-sm text-slate-400 italic">No issues found</li>}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">How to improve</h3>
+              <ul className="space-y-2">
+                {typographyAnalysis.recommendations.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="text-violet-500 mt-0.5 flex-shrink-0">→</span>{item}
+                  </li>
+                ))}
+                {typographyAnalysis.recommendations.length === 0 && <li className="text-sm text-slate-400 italic">No recommendations</li>}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Copywriting Analysis ── */}
+      {copywritingAnalysis && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Copy Analysis</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Headline quality, value proposition, readability, and CTA copy</p>
+            </div>
+            <div className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full ${
+              copywritingAnalysis.score >= 8 ? 'bg-emerald-100 text-emerald-700' :
+              copywritingAnalysis.score >= 5 ? 'bg-amber-100 text-amber-700' :
+              'bg-red-100 text-red-700'
+            }`}>
+              {copywritingAnalysis.score >= 8 ? 'Great' : copywritingAnalysis.score >= 5 ? 'OK' : 'Poor'} — {copywritingAnalysis.score}/10
+            </div>
+          </div>
+          <p className="text-sm text-slate-500 italic">{copywritingAnalysis.notes}</p>
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2">Copy issues</h3>
+              <ul className="space-y-2">
+                {copywritingAnalysis.issues.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="text-red-400 mt-0.5 flex-shrink-0">✗</span>{item}
+                  </li>
+                ))}
+                {copywritingAnalysis.issues.length === 0 && <li className="text-sm text-slate-400 italic">No issues found</li>}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">Suggestions</h3>
+              <ul className="space-y-2">
+                {copywritingAnalysis.suggestions.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="text-violet-500 mt-0.5 flex-shrink-0">→</span>{item}
+                  </li>
+                ))}
+                {copywritingAnalysis.suggestions.length === 0 && <li className="text-sm text-slate-400 italic">No suggestions</li>}
               </ul>
             </div>
           </div>

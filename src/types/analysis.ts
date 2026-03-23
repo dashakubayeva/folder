@@ -39,6 +39,27 @@ export interface NavigationAnalysis {
   recommendations: string[];        // 2-5 concrete improvements
 }
 
+export interface TypographyAnalysis {
+  score: number;             // 1-10
+  notes: string;             // one-sentence summary
+  issues: string[];          // 2-5 specific problems
+  recommendations: string[]; // 2-5 improvements
+}
+
+export interface FirstImpressionAnalysis {
+  score: number;    // 1-10
+  verdict: string;  // one-sentence summary
+  strengths: string[]; // 2-4 what works above the fold
+  issues: string[];    // 2-4 problems above the fold
+}
+
+export interface CopywritingAnalysis {
+  score: number;       // 1-10
+  notes: string;       // one-sentence summary
+  issues: string[];    // 2-5 specific copy problems
+  suggestions: string[]; // 2-5 concrete improvements
+}
+
 export interface PrioritizedItem {
   text: string;
   priority: 'critical' | 'high' | 'medium';
@@ -63,6 +84,9 @@ export interface AnalysisResult {
     trustCredibility: QualitativeCategory;
   };
   navigationAnalysis?: NavigationAnalysis;
+  typographyAnalysis?: TypographyAnalysis;
+  firstImpressionAnalysis?: FirstImpressionAnalysis;
+  copywritingAnalysis?: CopywritingAnalysis;
   heatmap?: { zones: AttentionZone[] };
   analyzedAt: string;
   aiAvailable?: boolean;
