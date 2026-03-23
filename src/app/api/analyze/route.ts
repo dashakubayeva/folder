@@ -7,7 +7,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
-import { SCREENSHOTS_DIR } from '@/lib/storage';
+const SCREENSHOTS_DIR = path.join(process.cwd(), 'data', 'screenshots');
 import { AnalysisResult, AxeViolation, LighthouseMetrics, NavigationAnalysis, PageType, PrioritizedItem } from '@/types/analysis';
 
 const client = new Anthropic();

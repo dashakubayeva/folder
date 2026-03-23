@@ -22,12 +22,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
               <span className="text-white font-semibold text-sm tracking-tight">Viewra</span>
             </a>
-            <a
-              href="/scenarios"
-              className="flex items-center gap-1.5 text-slate-400 hover:text-white px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors"
-            >
-              Scenarios
-            </a>
           </div>
         </nav>
         <main className="max-w-5xl mx-auto px-6 py-8">{children}</main>

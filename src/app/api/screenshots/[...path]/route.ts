@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-import { SCREENSHOTS_DIR } from '@/lib/storage';
+const SCREENSHOTS_DIR = path.join(process.cwd(), 'data', 'screenshots');
 
 export async function GET(
   _req: NextRequest,
