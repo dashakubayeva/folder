@@ -67,7 +67,7 @@ export default function HomePage() {
       }
 
       const result: AnalysisResult = await res.json();
-      sessionStorage.setItem('ux-analysis', JSON.stringify(result));
+      localStorage.setItem('ux-analysis', JSON.stringify(result));
       setProgress(100);
       setTimeout(() => router.push('/results'), 300);
     } catch (err) {

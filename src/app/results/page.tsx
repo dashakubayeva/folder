@@ -167,7 +167,7 @@ export default function ResultsPage() {
   const screenshotImgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem('ux-analysis');
+    const raw = localStorage.getItem('ux-analysis');
     if (!raw) { router.replace('/'); return; }
     try { setResult(JSON.parse(raw)); } catch { router.replace('/'); }
   }, [router]);
@@ -186,7 +186,7 @@ export default function ResultsPage() {
     );
   }
 
-  const { url, screenshotPath, pageType, lighthouse, axeViolations, good, bad, qualitative, navigationAnalysis, typographyAnalysis, firstImpressionAnalysis, copywritingAnalysis, heatmap, analyzedAt, aiAvailable } = result;
+  const { url, screenshotPath, pageType, lighthouse, axeViolations, good, bad, qualitative, navigationAnalysis, typographyAnalysis, firstImpressionAnalysis, copywritingAnalysis, colorPaletteAnalysis, heatmap, analyzedAt, aiAvailable } = result;
   const hostname = (() => { try { return new URL(url).hostname; } catch { return url; } })();
   const overall = calcOverall(lighthouse, qualitative, aiAvailable);
 
@@ -624,6 +624,66 @@ export default function ResultsPage() {
                   </li>
                 ))}
                 {typographyAnalysis.recommendations.length === 0 && <li className="text-sm text-slate-400 italic">No recommendations</li>}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Color Palette & Brand Consistency ── */}
+      {colorPaletteAnalysis && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Colour Palette & Brand Consistency</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Dominant colours, contrast ratios, and visual cohesion</p>
+            </div>
+            <div className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full ${
+              colorPaletteAnalysis.score >= 8 ? 'bg-emerald-100 text-emerald-700' :
+              colorPaletteAnalysis.score >= 5 ? 'bg-amber-100 text-amber-700' :
+              'bg-red-100 text-red-700'
+            }`}>
+              {colorPaletteAnalysis.score >= 8 ? 'Great' : colorPaletteAnalysis.score >= 5 ? 'OK' : 'Poor'} — {colorPaletteAnalysis.score}/10
+            </div>
+          </div>
+          <p className="text-sm text-slate-500 italic">{colorPaletteAnalysis.notes}</p>
+          {colorPaletteAnalysis.dominantColors.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-slate-400 font-medium uppercase tracking-wide">Palette:</span>
+              {colorPaletteAnalysis.dominantColors.map((hex, i) => (
+                <span
+                  key={i}
+                  className="inline-block w-7 h-7 rounded-full border border-slate-200 shadow-sm"
+                  style={{ backgroundColor: hex }}
+                  title={hex}
+                />
+              ))}
+              {colorPaletteAnalysis.dominantColors.map((hex, i) => (
+                <span key={`label-${i}`} className="text-xs text-slate-400 font-mono">{hex}</span>
+              ))}
+            </div>
+          )}
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2">Issues</h3>
+              <ul className="space-y-2">
+                {colorPaletteAnalysis.issues.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="text-red-400 mt-0.5 flex-shrink-0">✗</span>{item}
+                  </li>
+                ))}
+                {colorPaletteAnalysis.issues.length === 0 && <li className="text-sm text-slate-400 italic">No issues found</li>}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">Recommendations</h3>
+              <ul className="space-y-2">
+                {colorPaletteAnalysis.recommendations.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="text-violet-500 mt-0.5 flex-shrink-0">→</span>{item}
+                  </li>
+                ))}
+                {colorPaletteAnalysis.recommendations.length === 0 && <li className="text-sm text-slate-400 italic">No recommendations</li>}
               </ul>
             </div>
           </div>

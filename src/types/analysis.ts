@@ -60,6 +60,14 @@ export interface CopywritingAnalysis {
   suggestions: string[]; // 2-5 concrete improvements
 }
 
+export interface ColorPaletteAnalysis {
+  score: number;            // 1-10
+  notes: string;            // one-sentence summary
+  dominantColors: string[]; // 3-6 hex codes, most prominent first
+  issues: string[];         // 2-4 problems (contrast, clashing, too many)
+  recommendations: string[]; // 2-4 improvements
+}
+
 export interface PrioritizedItem {
   text: string;
   priority: 'critical' | 'high' | 'medium';
@@ -87,6 +95,7 @@ export interface AnalysisResult {
   typographyAnalysis?: TypographyAnalysis;
   firstImpressionAnalysis?: FirstImpressionAnalysis;
   copywritingAnalysis?: CopywritingAnalysis;
+  colorPaletteAnalysis?: ColorPaletteAnalysis;
   heatmap?: { zones: AttentionZone[] };
   analyzedAt: string;
   aiAvailable?: boolean;

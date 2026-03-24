@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
 const SCREENSHOTS_DIR = path.join(process.cwd(), 'data', 'screenshots');
-import { AnalysisResult, AxeViolation, CopywritingAnalysis, FirstImpressionAnalysis, LighthouseMetrics, NavigationAnalysis, PageType, PrioritizedItem, TypographyAnalysis } from '@/types/analysis';
+import { AnalysisResult, AxeViolation, ColorPaletteAnalysis, CopywritingAnalysis, FirstImpressionAnalysis, LighthouseMetrics, NavigationAnalysis, PageType, PrioritizedItem, TypographyAnalysis } from '@/types/analysis';
 
 const client = new Anthropic();
 
@@ -554,6 +554,57 @@ Return ONLY valid JSON (no markdown):
     console.error('Copywriting analysis failed:', err);
   }
 
+  // ── Step 9: Color Palette & Brand Consistency ─────────────────────────────
+  let colorPaletteAnalysis: ColorPaletteAnalysis | undefined;
+  try {
+    const paletteResponse = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 800,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
+          {
+            type: 'text',
+            text: `Analyze the color palette and brand consistency of this webpage screenshot.
+
+Identify the 3–6 most dominant/prominent colors used (backgrounds, text, buttons, accents). Return them as hex codes.
+
+Evaluate:
+- Color contrast (do text/background combos meet WCAG AA: 4.5:1 for normal text, 3:1 for large)?
+- Color harmony (do the colors work well together)?
+- Brand consistency (is the palette cohesive and intentional, or random)?
+- Number of colors (too many competing colors?)
+
+Return ONLY valid JSON (no markdown):
+{
+  "score": <1-10 overall color quality>,
+  "notes": "<one-sentence overall summary>",
+  "dominantColors": ["#hexcode1", "#hexcode2", ...],
+  "issues": ["<specific problem>", ...],
+  "recommendations": ["<concrete improvement>", ...]
+}`
+          }
+        ]
+      }]
+    });
+    const paletteText = paletteResponse.content.find(b => b.type === 'text');
+    const paletteRaw = paletteText?.type === 'text' ? paletteText.text : '{}';
+    const paletteJson = paletteRaw.match(/\{[\s\S]*\}/);
+    const paletteParsed = JSON.parse(paletteJson ? paletteJson[0] : '{}');
+    if (paletteParsed.score) {
+      colorPaletteAnalysis = {
+        score: paletteParsed.score,
+        notes: paletteParsed.notes ?? '',
+        dominantColors: Array.isArray(paletteParsed.dominantColors) ? paletteParsed.dominantColors : [],
+        issues: Array.isArray(paletteParsed.issues) ? paletteParsed.issues : [],
+        recommendations: Array.isArray(paletteParsed.recommendations) ? paletteParsed.recommendations : [],
+      };
+    }
+  } catch (err) {
+    console.error('Color palette analysis failed:', err);
+  }
+
   // ── Assemble final result ─────────────────────────────────────────────────
   const result: AnalysisResult = {
     url,
@@ -569,6 +620,7 @@ Return ONLY valid JSON (no markdown):
     typographyAnalysis,
     firstImpressionAnalysis,
     copywritingAnalysis,
+    colorPaletteAnalysis,
     heatmap,
     analyzedAt: new Date().toISOString(),
     aiAvailable,
