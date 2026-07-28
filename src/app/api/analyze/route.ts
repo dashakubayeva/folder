@@ -3,34 +3,11 @@ import { chromium } from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
 import { launch } from 'chrome-launcher';
 import lighthouse from 'lighthouse';
-import Anthropic from '@anthropic-ai/sdk';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
 const SCREENSHOTS_DIR = path.join(process.cwd(), 'data', 'screenshots');
 import { AnalysisResult, AxeViolation, ColorPaletteAnalysis, CopywritingAnalysis, FirstImpressionAnalysis, LighthouseMetrics, NavigationAnalysis, PageType, PrioritizedItem, TypographyAnalysis } from '@/types/analysis';
-
-const client = new Anthropic();
-
-const PAGE_TYPE_CRITERIA: Record<string, string> = {
-  landing: 'hero section clarity, value proposition visibility above the fold, primary CTA prominence and contrast, social proof (testimonials/logos), trust signals',
-  ecommerce: 'product image quality and size, price visibility and prominence, add-to-cart button clarity, trust badges and reviews, breadcrumb navigation, related products',
-  blog: 'typography and line height for readability, optimal content width (~680px), heading hierarchy (H1-H2-H3), author info and date, related articles',
-  dashboard: 'data visualization clarity, information density vs whitespace balance, primary action button placement, status indicators and feedback, filter/search accessibility',
-  form: 'form field labels and placeholder clarity, required field indicators, submit CTA visibility, inline validation hints, alternative contact methods, minimal nav distraction',
-  portfolio: 'project thumbnail quality and grid layout, case study depth visible, client/role context, contact CTA accessibility, smooth project-to-project navigation',
-  other: 'visual hierarchy, content clarity, call-to-action visibility, trust signals, navigation usability',
-};
-
-const NAV_TYPE_EXTRA: Record<string, string> = {
-  landing: '- Minimal nav is ideal: fewer links = less distraction from conversion; one prominent CTA button in nav is best',
-  ecommerce: '- Search bar should be visible and prominent; cart icon with item count should be present; clear category structure',
-  blog: '- Category/tag links and search should be easily accessible; breadcrumb or reading progress is a plus',
-  dashboard: '- Active state must clearly show current section; breadcrumbs for deep navigation hierarchies are important',
-  form: '- Nav should be minimal and unobtrusive to avoid distracting from form completion',
-  portfolio: '- Smooth prev/next project navigation; portfolio section should be clearly linked from nav',
-  other: '',
-};
 
 const EMPTY_LIGHTHOUSE: LighthouseMetrics = {
   performance: 0,
@@ -43,6 +20,402 @@ const EMPTY_LIGHTHOUSE: LighthouseMetrics = {
   tbt: null,
   speedIndex: null,
 };
+
+// ── Heuristic analysis functions ──────────────────────────────────────────────
+
+function detectPageType(html: string): PageType {
+  const lower = html.toLowerCase();
+  const count = (patterns: string[]) => patterns.filter(p => lower.includes(p)).length;
+
+  const scores: { type: PageType; score: number }[] = [
+    { type: 'ecommerce', score: count(['add to cart', 'buy now', 'checkout', 'cart', 'product', 'shop', 'price', 'quantity', 'in stock', 'purchase']) },
+    { type: 'blog', score: count(['article', 'blog', 'author', 'published', 'post', 'category', 'tags', 'comments', 'read more', 'subscribe']) },
+    { type: 'dashboard', score: count(['dashboard', 'analytics', 'metric', 'chart', 'graph', 'report', 'widget', 'overview', 'stats', 'data-table']) },
+    { type: 'form', score: count(['<form', 'contact us', 'required', 'email address', 'sign up', 'register', 'login', 'submit', 'input type']) },
+    { type: 'portfolio', score: count(['portfolio', 'projects', 'my work', 'case study', 'gallery', 'showcase', 'hire me', 'client']) },
+    { type: 'landing', score: count(['hero', 'get started', 'try for free', 'sign up free', 'testimonial', 'features', 'pricing', 'value proposition']) },
+  ];
+
+  const best = scores.reduce((a, b) => (a.score > b.score ? a : b));
+  return best.score >= 2 ? best.type : 'other';
+}
+
+function generateGoodBad(html: string, lighthouse: LighthouseMetrics, pageType: PageType): { good: PrioritizedItem[]; bad: PrioritizedItem[] } {
+  const lower = html.toLowerCase();
+  const good: PrioritizedItem[] = [];
+  const bad: PrioritizedItem[] = [];
+
+  // Performance
+  if (lighthouse.performance >= 90) good.push({ text: `Excellent performance score (${lighthouse.performance}/100)`, priority: 'high' });
+  else if (lighthouse.performance >= 70) good.push({ text: `Good performance score (${lighthouse.performance}/100)`, priority: 'medium' });
+  else if (lighthouse.performance < 50) bad.push({ text: `Poor performance score (${lighthouse.performance}/100) — slow page will lose users`, priority: 'critical' });
+  else bad.push({ text: `Below-average performance (${lighthouse.performance}/100) — optimize images and reduce JS`, priority: 'high' });
+
+  // Accessibility
+  if (lighthouse.accessibility >= 90) good.push({ text: `High accessibility score (${lighthouse.accessibility}/100)`, priority: 'high' });
+  else if (lighthouse.accessibility < 70) bad.push({ text: `Low accessibility score (${lighthouse.accessibility}/100) — site is not inclusive`, priority: 'critical' });
+
+  // SEO
+  if (lighthouse.seo >= 90) good.push({ text: `Strong SEO score (${lighthouse.seo}/100)`, priority: 'medium' });
+  else if (lighthouse.seo < 70) bad.push({ text: `Weak SEO score (${lighthouse.seo}/100) — improve meta tags and content structure`, priority: 'high' });
+
+  // Best practices
+  if (lighthouse.bestPractices >= 90) good.push({ text: `Follows web best practices (${lighthouse.bestPractices}/100)`, priority: 'medium' });
+  else if (lighthouse.bestPractices < 70) bad.push({ text: `Web best practices score is low (${lighthouse.bestPractices}/100)`, priority: 'medium' });
+
+  // LCP
+  if (lighthouse.lcp !== null) {
+    if (lighthouse.lcp <= 2500) good.push({ text: `Fast Largest Contentful Paint (${(lighthouse.lcp / 1000).toFixed(1)}s)`, priority: 'medium' });
+    else if (lighthouse.lcp > 4000) bad.push({ text: `Slow LCP (${(lighthouse.lcp / 1000).toFixed(1)}s) — hero content loads too slowly`, priority: 'critical' });
+    else bad.push({ text: `LCP needs improvement (${(lighthouse.lcp / 1000).toFixed(1)}s, target: <2.5s)`, priority: 'high' });
+  }
+
+  // CLS
+  if (lighthouse.cls !== null) {
+    if (lighthouse.cls <= 0.1) good.push({ text: `Stable layout with low CLS (${lighthouse.cls.toFixed(3)})`, priority: 'medium' });
+    else if (lighthouse.cls > 0.25) bad.push({ text: `High layout shift (CLS: ${lighthouse.cls.toFixed(3)}) — elements jumping around hurts UX`, priority: 'high' });
+  }
+
+  // HTML structure checks
+  const hasH1 = /<h1[^>]*>/i.test(html);
+  const hasMetaDescription = /<meta[^>]+name=["']description["']/i.test(html);
+  const hasAltText = /<img[^>]+alt=["'][^"']+["']/i.test(html);
+  const hasMobileViewport = /<meta[^>]+name=["']viewport["']/i.test(html);
+  const ctaWords = ['get started', 'sign up', 'try for free', 'buy now', 'contact us', 'book demo', 'download', 'start free'];
+  const hasCta = ctaWords.some(p => lower.includes(p));
+
+  if (hasH1) good.push({ text: 'Page has a clear H1 heading for content hierarchy', priority: 'medium' });
+  else bad.push({ text: 'Missing H1 heading — add a clear primary heading for SEO and accessibility', priority: 'high' });
+
+  if (hasMetaDescription) good.push({ text: 'Meta description present for search engine previews', priority: 'medium' });
+  else bad.push({ text: 'Missing meta description — add one to improve search result click-through rates', priority: 'medium' });
+
+  if (!hasAltText) bad.push({ text: 'Images missing alt text — required for accessibility and SEO', priority: 'high' });
+  if (!hasMobileViewport) bad.push({ text: 'Missing viewport meta tag — page will not render correctly on mobile', priority: 'critical' });
+
+  if (hasCta) good.push({ text: 'Clear call-to-action copy is present to guide users', priority: 'high' });
+  else if (pageType === 'landing' || pageType === 'ecommerce') bad.push({ text: 'No clear call-to-action detected — add prominent CTAs to drive conversions', priority: 'critical' });
+
+  // Social proof
+  const hasSocialProof = ['testimonial', 'review', 'trusted by', 'customers', 'clients', '★', '⭐'].some(p => lower.includes(p));
+  if (hasSocialProof && (pageType === 'landing' || pageType === 'ecommerce')) good.push({ text: 'Social proof (reviews/testimonials) is present', priority: 'high' });
+  else if (!hasSocialProof && (pageType === 'landing' || pageType === 'ecommerce')) bad.push({ text: 'No social proof (testimonials, reviews, trust badges) — add them to build credibility', priority: 'high' });
+
+  const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2 };
+  bad.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+
+  return { good: good.slice(0, 6), bad: bad.slice(0, 6) };
+}
+
+function analyzeQualitative(html: string, lh: LighthouseMetrics, pageType: PageType): AnalysisResult['qualitative'] {
+  const lower = html.toLowerCase();
+
+  const hasH1 = /<h1[^>]*>/i.test(html);
+  const hasH2 = /<h2[^>]*>/i.test(html);
+  const hasImages = /<img[^>]+>/i.test(html);
+  const hasNav = /<nav|role=["']navigation["']/i.test(html);
+  const navLinkCount = (html.match(/<a[^>]+href/gi) ?? []).length;
+  const hasParagraphs = /<p[^>]*>\s*.{50,}/i.test(html);
+  const ctaCount = ['get started', 'sign up', 'try for free', 'buy now', 'contact us', 'book', 'download', 'submit'].filter(p => lower.includes(p)).length;
+  const hasButton = /<button[^>]*>|<a[^>]+class=["'][^"']*btn/i.test(html);
+  const trustSignals = ['testimonial', 'review', 'trusted by', 'security', 'privacy', 'ssl', 'certified', 'guarantee', 'money back', 'award'].filter(p => lower.includes(p)).length;
+
+  const visualDesignScore = Math.min(10, Math.max(1,
+    5 + (hasH1 ? 1 : -1) + (hasImages ? 1 : 0) + (lh.bestPractices >= 80 ? 1 : 0) + (lh.performance >= 70 ? 1 : 0) + (lh.accessibility >= 80 ? 1 : 0)
+  ));
+  const navigationScore = Math.min(10, Math.max(1,
+    5 + (hasNav ? 2 : -2) + (navLinkCount >= 3 && navLinkCount <= 10 ? 1 : 0) + (lh.seo >= 80 ? 1 : 0)
+  ));
+  const contentClarityScore = Math.min(10, Math.max(1,
+    5 + (hasH1 ? 2 : -2) + (hasH2 ? 1 : 0) + (hasParagraphs ? 1 : 0) + (lh.seo >= 80 ? 1 : 0)
+  ));
+  const ctaScore = Math.min(10, Math.max(1,
+    4 + (ctaCount > 0 ? 2 : -1) + (ctaCount >= 2 ? 1 : 0) + (hasButton ? 1 : 0) + (pageType === 'landing' && ctaCount >= 2 ? 1 : 0)
+  ));
+  const trustScore = Math.min(10, Math.max(1, 4 + Math.min(trustSignals, 3) + (lh.bestPractices >= 80 ? 1 : 0) + (lh.accessibility >= 80 ? 1 : 0)));
+
+  return {
+    visualDesign: { score: visualDesignScore, notes: visualDesignScore >= 7 ? 'Good visual structure with consistent heading hierarchy and imagery.' : 'Visual design needs improvement — review heading hierarchy and image usage.' },
+    navigation: { score: navigationScore, notes: navigationScore >= 7 ? 'Navigation is present and reasonably structured.' : 'Navigation structure needs attention — ensure links are clear and accessible.' },
+    contentClarity: { score: contentClarityScore, notes: contentClarityScore >= 7 ? 'Content is well structured with clear headings and paragraphs.' : 'Content clarity needs work — start with a strong H1 and clear paragraph structure.' },
+    callsToAction: { score: ctaScore, notes: ctaScore >= 7 ? 'Clear calls to action are present to guide users.' : 'Calls to action are weak or missing — add clear, action-oriented button text.' },
+    trustCredibility: { score: trustScore, notes: trustScore >= 7 ? 'Trust signals are present to build user confidence.' : 'Trust signals are lacking — consider adding testimonials, security badges, or guarantees.' },
+  };
+}
+
+function analyzeNavigationHeuristic(
+  html: string,
+  pageType: PageType,
+  navScreenshotPath: string,
+  navMobileScreenshotPath: string | null,
+): NavigationAnalysis {
+  const lower = html.toLowerCase();
+  const navMatch = html.match(/<nav[^>]*>([\s\S]*?)<\/nav>/i);
+  const navHtml = navMatch ? navMatch[1] : html.slice(0, 5000);
+  const navLinks = (navHtml.match(/<a[^>]+href/gi) ?? []).length;
+
+  const hasLogo = /<(?:img|svg)[^>]*(?:logo|brand)/i.test(html) || /<a[^>]*href=["']\/["']/i.test(html);
+  const hasCta = /<(?:a|button)[^>]*(?:btn|button|cta)/i.test(navHtml) || ['sign up', 'get started', 'login', 'try free'].some(p => navHtml.toLowerCase().includes(p));
+  const hasMobileMenu = /hamburger|menu-toggle|nav-toggle|mobile-menu|data-toggle=["']collapse/i.test(html) || lower.includes('☰') || lower.includes('≡');
+  const hasActiveState = /aria-current|class=["'][^"']*active[^"']*["']/i.test(navHtml);
+
+  let score = 5;
+  if (navLinks >= 3 && navLinks <= 7) score += 1;
+  else if (navLinks > 10) score -= 2;
+  if (hasLogo) score += 1;
+  if (hasCta) score += 1;
+  if (hasMobileMenu) score += 1;
+  if (hasActiveState) score += 1;
+  score = Math.min(10, Math.max(1, score));
+
+  const issues: string[] = [];
+  const recommendations: string[] = [];
+
+  if (navLinks < 2) { issues.push('Navigation has very few links — users may struggle to find content.'); recommendations.push('Add at least 3-5 key navigation links to help users explore the site.'); }
+  if (navLinks > 10) { issues.push(`Navigation has ${navLinks} links, causing cognitive overload.`); recommendations.push('Reduce top-level navigation to 4-7 items; move secondary links to dropdowns or footer.'); }
+  if (!hasLogo) { issues.push('No logo or home link detected in navigation.'); recommendations.push('Add a logo in the top-left that links to the homepage.'); }
+  if (!hasCta) { issues.push('No call-to-action button in the navigation bar.'); recommendations.push('Add a visually distinct CTA button (e.g. "Sign Up") to the navigation.'); }
+  if (!hasMobileMenu) { issues.push('No mobile menu toggle detected — navigation may break on small screens.'); recommendations.push('Implement a hamburger menu or slide-out drawer for mobile viewports.'); }
+  if (!hasActiveState) { issues.push('No active/current page indicator in navigation.'); recommendations.push('Highlight the current page using aria-current or a distinct visual style.'); }
+  if (pageType === 'ecommerce' && !lower.includes('cart') && !lower.includes('basket')) { issues.push('No cart or basket link visible in navigation.'); recommendations.push('Add a cart icon with item count to the navigation bar.'); }
+
+  return {
+    screenshotPath: navScreenshotPath,
+    ...(navMobileScreenshotPath && { mobileScreenshotPath: navMobileScreenshotPath }),
+    score,
+    notes: score >= 7 ? 'Navigation is functional with key elements in place.' : 'Navigation needs improvement — several key usability elements are missing.',
+    issues: issues.slice(0, 5),
+    recommendations: recommendations.slice(0, 5),
+  };
+}
+
+function generateHeatmapZones(pageType: PageType): AnalysisResult['heatmap'] {
+  const zones = [
+    { x: 50, y: 6, radius: 18, intensity: 0.9, reason: 'Navigation bar' },
+    { x: 10, y: 6, radius: 10, intensity: 0.85, reason: 'Logo / brand mark' },
+    { x: 85, y: 6, radius: 10, intensity: 0.7, reason: 'Top-right CTA / nav action' },
+    { x: 50, y: 28, radius: 20, intensity: 1.0, reason: 'Hero headline (primary attention)' },
+    { x: 50, y: 42, radius: 14, intensity: 0.75, reason: 'Subheading / value proposition' },
+    { x: 50, y: 55, radius: 12, intensity: 0.8, reason: 'Primary CTA button' },
+    { x: 15, y: 55, radius: 8, intensity: 0.5, reason: 'Left rail (F-pattern)' },
+    { x: 20, y: 72, radius: 7, intensity: 0.4, reason: 'Feature item 1' },
+    { x: 50, y: 72, radius: 7, intensity: 0.4, reason: 'Feature item 2' },
+    { x: 80, y: 72, radius: 7, intensity: 0.35, reason: 'Feature item 3' },
+  ];
+
+  if (pageType === 'ecommerce') {
+    zones.push({ x: 70, y: 40, radius: 14, intensity: 0.85, reason: 'Product image / hero visual' });
+    zones.push({ x: 30, y: 60, radius: 12, intensity: 0.9, reason: 'Price & add-to-cart zone' });
+  } else if (pageType === 'blog') {
+    zones.push({ x: 50, y: 32, radius: 16, intensity: 0.9, reason: 'Article title' });
+    zones.push({ x: 12, y: 45, radius: 8, intensity: 0.6, reason: 'Author / date byline' });
+  } else if (pageType === 'dashboard') {
+    zones.push({ x: 25, y: 40, radius: 14, intensity: 0.85, reason: 'Primary KPI metric' });
+    zones.push({ x: 65, y: 55, radius: 16, intensity: 0.75, reason: 'Chart / data visualization' });
+  }
+
+  return { zones };
+}
+
+function analyzeTypographyHeuristic(html: string): TypographyAnalysis {
+  const issues: string[] = [];
+  const recommendations: string[] = [];
+  let score = 7;
+
+  const hasH1 = /<h1[^>]*>/i.test(html);
+  const hasH2 = /<h2[^>]*>/i.test(html);
+  const hasH3 = /<h3[^>]*>/i.test(html);
+  const h1Count = (html.match(/<h1[^>]*>/gi) ?? []).length;
+
+  if (!hasH1) { score -= 2; issues.push('No H1 heading found — every page needs exactly one primary heading.'); recommendations.push('Add a single H1 tag as the main page title.'); }
+  else if (h1Count > 1) { score -= 1; issues.push(`Multiple H1 headings found (${h1Count}) — only one H1 per page is recommended.`); recommendations.push('Reduce to a single H1 and use H2/H3 for subheadings.'); }
+  if (!hasH2 && hasH1) { issues.push('No H2 subheadings found — content may lack visual hierarchy.'); recommendations.push('Add H2 subheadings to break content into sections.'); }
+
+  // Small font sizes
+  const smallFonts = (html.match(/font-size:\s*(\d+)px/gi) ?? [])
+    .map(m => parseInt(m.replace(/\D/g, '')))
+    .filter(px => px > 0 && px < 14);
+  if (smallFonts.length > 0) { score -= 1; issues.push(`Small text detected (${smallFonts[0]}px) — minimum 16px recommended for body text.`); recommendations.push('Increase base font size to at least 16px for comfortable reading.'); }
+
+  // Line height
+  const lhMatch = html.match(/line-height:\s*([\d.]+)/i);
+  if (lhMatch) {
+    const lh = parseFloat(lhMatch[1]);
+    if (lh < 1.4 && lh > 0) { score -= 1; issues.push(`Line height is tight (${lh}) — text may feel cramped.`); recommendations.push('Set line-height to 1.5–1.7 for body text to improve readability.'); }
+  }
+
+  // Too many font families
+  const fontFamilies = new Set((html.match(/font-family:\s*[^;,"]+/gi) ?? []).map(m => m.split(':')[1].trim().split(',')[0].trim().toLowerCase()));
+  if (fontFamilies.size > 3) { score -= 1; issues.push(`${fontFamilies.size} font families detected — too many fonts reduces visual consistency.`); recommendations.push('Limit to 2 font families: one for headings and one for body text.'); }
+
+  if (hasH1 && hasH2) score = Math.min(score + 1, 10);
+  if (hasH1 && hasH2 && hasH3) score = Math.min(score + 1, 10);
+  score = Math.max(1, score);
+
+  if (issues.length === 0) issues.push('Typography appears generally well structured based on HTML analysis.');
+  if (recommendations.length === 0) recommendations.push('Test with real users to confirm font sizes and line spacing feel comfortable across devices.');
+
+  return {
+    score,
+    notes: score >= 7 ? 'Typography is reasonably well structured with proper heading hierarchy.' : 'Typography issues detected — review heading hierarchy and font sizing.',
+    issues: issues.slice(0, 5),
+    recommendations: recommendations.slice(0, 5),
+  };
+}
+
+function analyzeFirstImpressionHeuristic(html: string, lh: LighthouseMetrics, pageType: PageType): FirstImpressionAnalysis {
+  const lower = html.toLowerCase();
+  const strengths: string[] = [];
+  const issues: string[] = [];
+
+  const hasH1 = /<h1[^>]*>/i.test(html);
+  const hasHeroImage = /hero|banner|cover|featured/i.test(html) && /<img[^>]+>/i.test(html);
+  const ctaWords = ['get started', 'sign up', 'try for free', 'buy now', 'contact us', 'book demo', 'start free'];
+  const hasCta = ctaWords.some(p => lower.includes(p));
+  const hasSubheadline = /<h2[^>]*>/i.test(html) || /class=["'][^"']*(?:subtitle|tagline)[^"']*["']/i.test(html);
+
+  let score = 5;
+
+  if (hasH1) { score += 1; strengths.push('A clear primary headline is visible above the fold.'); }
+  else { score -= 2; issues.push('No H1 headline detected — users cannot immediately understand the page purpose.'); }
+
+  if (hasHeroImage) { score += 1; strengths.push('Hero visual element is present to create visual interest.'); }
+
+  if (hasCta) { score += 1; strengths.push('A call-to-action is present to guide users.'); }
+  else { score -= 1; issues.push('No clear call-to-action detected above the fold.'); }
+
+  if (hasSubheadline) strengths.push('Subheadline provides additional context below the main headline.');
+
+  if (lh.performance < 50) { score -= 1; issues.push('Poor performance means the page loads slowly, harming first impression.'); }
+  if (lh.lcp !== null && lh.lcp > 4000) issues.push('Slow LCP means hero content appears late — users may think the page is broken.');
+
+  if (pageType === 'landing') {
+    const hasSocialProof = ['testimonial', 'customers', 'trusted by', '★', '⭐'].some(p => lower.includes(p));
+    if (hasSocialProof) strengths.push('Social proof is visible near the top of the page.');
+    else issues.push('No social proof visible — missing an opportunity to build immediate trust.');
+  }
+
+  score = Math.min(10, Math.max(1, score));
+
+  return {
+    score,
+    verdict: score >= 7
+      ? 'The page makes a solid first impression with clear messaging and visual hierarchy.'
+      : score >= 5
+      ? 'The first impression is acceptable but could be strengthened with clearer messaging and a prominent CTA.'
+      : 'The page struggles to communicate its purpose quickly — visitors may leave before engaging.',
+    strengths: strengths.length > 0 ? strengths.slice(0, 4) : ['Page content loads and renders.'],
+    issues: issues.length > 0 ? issues.slice(0, 4) : ['No critical first-impression issues detected.'],
+  };
+}
+
+function analyzeCopywritingHeuristic(html: string, pageType: PageType): CopywritingAnalysis {
+  const lower = html.toLowerCase();
+  const issues: string[] = [];
+  const suggestions: string[] = [];
+
+  const textContent = html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const wordCount = textContent.split(/\s+/).length;
+
+  const genericCtas = ['click here', 'read more', 'submit', 'send'];
+  const specificCtas = ['get started', 'try for free', 'start free trial', 'book a demo', 'download now', 'join free', 'sign up free'];
+  const hasGenericCta = genericCtas.some(p => lower.includes(p));
+  const hasSpecificCta = specificCtas.some(p => lower.includes(p));
+
+  let score = 6;
+
+  if (hasGenericCta) { score -= 1; issues.push('Generic CTA copy detected (e.g. "Click here", "Submit") — weak and vague.'); suggestions.push('Replace with specific, benefit-focused text like "Start free trial" or "See pricing".'); }
+  if (hasSpecificCta) score += 1;
+
+  const buzzwords = ['leverage', 'synergy', 'disruptive', 'paradigm', 'scalable', 'robust solution', 'best-in-class', 'world-class', 'cutting-edge', 'innovative'];
+  const buzzwordCount = buzzwords.filter(p => lower.includes(p)).length;
+  if (buzzwordCount >= 2) { score -= 1; issues.push(`Corporate jargon detected (${buzzwordCount} buzzwords) — language feels generic and untrustworthy.`); suggestions.push('Replace jargon with plain, specific language. Describe what the product actually does.'); }
+
+  const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (h1Match) {
+    const h1Text = h1Match[1].replace(/<[^>]+>/g, '').trim();
+    if (h1Text.length < 10) { score -= 1; issues.push('H1 headline is very short — it may not communicate the value proposition.'); suggestions.push('Expand the headline to state what the site offers and for whom (e.g. "Analytics for teams that hate dashboards").'); }
+    else if (h1Text.length > 120) { score -= 1; issues.push('H1 headline is very long — consider condensing to the core message.'); suggestions.push('Trim the headline to the most compelling 6-12 words.'); }
+    else score += 1;
+  } else {
+    score -= 2; issues.push('No H1 headline found — the page is missing its most important copy element.'); suggestions.push('Add a compelling H1 that states your unique value proposition in one sentence.');
+  }
+
+  if (wordCount < 50) { score -= 1; issues.push('Very little text content — page may lack enough information for users to make decisions.'); suggestions.push('Add descriptive copy: explain the benefits, how it works, and who it is for.'); }
+
+  const passivePatterns = ['is being', 'was being', 'has been', 'have been', 'will be'];
+  const passiveCount = passivePatterns.filter(p => lower.includes(p)).length;
+  if (passiveCount >= 3) { score -= 1; issues.push('Passive voice detected — active voice is more persuasive.'); suggestions.push('Rewrite passive constructions in active voice: "We deliver results" instead of "Results are delivered".'); }
+
+  score = Math.min(10, Math.max(1, score));
+
+  if (issues.length === 0) issues.push('Copy quality appears reasonable based on text analysis.');
+  if (suggestions.length === 0) suggestions.push('A/B test different headline variations to find the most compelling version.');
+
+  return {
+    score,
+    notes: score >= 7 ? 'Copy is clear and well-written with specific calls to action.' : 'Copy needs improvement — focus on clear headlines, specific CTAs, and plain language.',
+    issues: issues.slice(0, 5),
+    suggestions: suggestions.slice(0, 5),
+  };
+}
+
+function analyzeColorPaletteHeuristic(html: string): ColorPaletteAnalysis {
+  const issues: string[] = [];
+  const recommendations: string[] = [];
+
+  const hexColors = new Set((html.match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g) ?? [])
+    .map(h => h.toUpperCase())
+    .filter(h => !['#000000', '#000', '#FFFFFF', '#FFF'].includes(h)));
+
+  const rgbColors = (html.match(/rgb\(\s*(\d+),\s*(\d+),\s*(\d+)\s*\)/gi) ?? []).map(rgb => {
+    const parts = rgb.match(/\d+/g)!.map(Number);
+    return '#' + parts.map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase();
+  });
+
+  const allColors = [...new Set([...hexColors, ...rgbColors])];
+  let score = 7;
+  const dominantColors = allColors.slice(0, 6);
+
+  if (allColors.length === 0) {
+    dominantColors.push('#000000', '#FFFFFF', '#0066CC');
+    issues.push('Unable to detect colors from inline styles — colors may be in external stylesheets.');
+    recommendations.push('Ensure primary brand colors have sufficient contrast (4.5:1 ratio for body text).');
+  } else if (allColors.length > 8) {
+    score -= 2;
+    issues.push(`Many colors detected (${allColors.length}) — too many colors create visual inconsistency.`);
+    recommendations.push('Limit your palette to 2-3 primary colors plus 1-2 accent colors for visual cohesion.');
+  } else if (allColors.length >= 3) {
+    score += 1;
+  }
+
+  const lower = html.toLowerCase();
+  const hasLightBg = lower.includes('background: white') || lower.includes('background: #fff') || lower.includes('bg-white');
+  const hasLightText = /#[cdefCDEF][0-9a-fA-F]{5}/.test(html);
+  if (hasLightBg && hasLightText) {
+    score -= 2;
+    issues.push('Light-colored text on white/light backgrounds may fail WCAG contrast requirements.');
+    recommendations.push('Test all text/background combinations. Use text darker than #767676 on white backgrounds.');
+  }
+
+  if (issues.length === 0) issues.push('No major color issues detected from inline CSS analysis.');
+  if (recommendations.length < 2) {
+    recommendations.push('Verify contrast ratios meet WCAG AA standards (4.5:1 for normal text, 3:1 for large text).');
+    recommendations.push('Use a consistent palette: 1-2 brand colors, 1 accent color, and neutral grays.');
+  }
+
+  score = Math.min(10, Math.max(1, score));
+
+  return {
+    score,
+    notes: score >= 7 ? 'Color palette appears cohesive — verify contrast ratios for accessibility compliance.' : 'Color usage needs attention — too many colors or potential contrast issues detected.',
+    dominantColors: dominantColors.length > 0 ? dominantColors : ['#000000', '#FFFFFF'],
+    issues: issues.slice(0, 4),
+    recommendations: recommendations.slice(0, 4),
+  };
+}
+
+// ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   let url: string;
@@ -83,12 +456,10 @@ export async function POST(req: NextRequest) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await context.newPage();
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    // Give JS a moment to render
     await page.waitForTimeout(2000);
     screenshotBuffer = Buffer.from(await page.screenshot({ fullPage: false }));
     html = (await page.content()).slice(0, 40000);
 
-    // Run axe-core accessibility scan
     try {
       const axeResults = await new AxeBuilder({ page }).analyze();
       axeViolations = axeResults.violations.map((v) => ({
@@ -101,38 +472,30 @@ export async function POST(req: NextRequest) {
       console.error('axe-core failed:', err);
     }
 
-    // Capture focused desktop nav screenshot (1280px)
+    // Desktop nav screenshot
     try {
       const navEl = page.locator('header, nav, [role="navigation"]').first();
       const box = await navEl.boundingBox();
       if (box) {
-        navScreenshotBuffer = Buffer.from(await page.screenshot({
-          clip: { x: 0, y: box.y, width: 1280, height: Math.min(box.height, 200) },
-        }));
+        navScreenshotBuffer = Buffer.from(await page.screenshot({ clip: { x: 0, y: box.y, width: 1280, height: Math.min(box.height, 200) } }));
       } else {
-        navScreenshotBuffer = Buffer.from(await page.screenshot({
-          clip: { x: 0, y: 0, width: 1280, height: 120 },
-        }));
+        navScreenshotBuffer = Buffer.from(await page.screenshot({ clip: { x: 0, y: 0, width: 1280, height: 120 } }));
       }
     } catch (err) {
       console.error('Nav screenshot failed:', err);
     }
 
-    // Capture mobile screenshots (375px): full-page + nav
+    // Mobile screenshots (375px)
     try {
       await page.setViewportSize({ width: 375, height: 812 });
-      await page.waitForTimeout(500); // let responsive CSS reflow
+      await page.waitForTimeout(500);
       mobileFullBuffer = Buffer.from(await page.screenshot({ fullPage: true }));
       const mobileNavEl = page.locator('header, nav, [role="navigation"]').first();
       const mobileBox = await mobileNavEl.boundingBox();
       if (mobileBox) {
-        navMobileBuffer = Buffer.from(await page.screenshot({
-          clip: { x: 0, y: mobileBox.y, width: 375, height: Math.min(mobileBox.height, 200) },
-        }));
+        navMobileBuffer = Buffer.from(await page.screenshot({ clip: { x: 0, y: mobileBox.y, width: 375, height: Math.min(mobileBox.height, 200) } }));
       } else {
-        navMobileBuffer = Buffer.from(await page.screenshot({
-          clip: { x: 0, y: 0, width: 375, height: 120 },
-        }));
+        navMobileBuffer = Buffer.from(await page.screenshot({ clip: { x: 0, y: 0, width: 375, height: 120 } }));
       }
     } catch (err) {
       console.error('Mobile screenshot failed:', err);
@@ -141,7 +504,7 @@ export async function POST(req: NextRequest) {
     await browser.close();
   }
 
-  // Save screenshots so they can be served via /api/screenshots/
+  // Save screenshots
   await fs.mkdir(SCREENSHOTS_DIR, { recursive: true });
   const screenshotFilename = `ux-${id}.png`;
   await fs.writeFile(path.join(SCREENSHOTS_DIR, screenshotFilename), screenshotBuffer);
@@ -173,12 +536,7 @@ export async function POST(req: NextRequest) {
   const chrome = await launch({
     chromePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
       || '/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome',
-    chromeFlags: [
-      '--headless',
-      '--disable-gpu',
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-    ],
+    chromeFlags: ['--headless', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage'],
   });
   try {
     const lhResult = await lighthouse(url, {
@@ -187,13 +545,7 @@ export async function POST(req: NextRequest) {
       logLevel: 'error',
       onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
       formFactor: 'desktop',
-      screenEmulation: {
-        mobile: false,
-        width: 1280,
-        height: 800,
-        deviceScaleFactor: 1,
-        disabled: false,
-      },
+      screenEmulation: { mobile: false, width: 1280, height: 800, deviceScaleFactor: 1, disabled: false },
       throttlingMethod: 'simulate',
     });
     const lhr = lhResult?.lhr;
@@ -212,398 +564,35 @@ export async function POST(req: NextRequest) {
     }
   } catch (err) {
     console.error('Lighthouse failed:', err);
-    // keep EMPTY_LIGHTHOUSE defaults
   } finally {
     await chrome.kill();
   }
 
-  // ── Step 3: Claude Vision qualitative analysis ────────────────────────────
-  const imageBase64 = screenshotBuffer.toString('base64');
-  const isAutoDetect = !pageTypeHint;
+  // ── Step 3: Rule-based page analysis ─────────────────────────────────────
+  const pageType = (pageTypeHint || detectPageType(html)) as PageType;
+  const { good, bad } = generateGoodBad(html, lighthouseData, pageType);
+  const qualitative = analyzeQualitative(html, lighthouseData, pageType);
 
-  const criteriaNote = isAutoDetect
-    ? `First, identify the page type (one of: landing, ecommerce, blog, dashboard, form, portfolio, other) based on what you see, and include it as "pageType" in your JSON. Then apply evaluation criteria appropriate for that type.`
-    : `This is a ${pageTypeHint} page. Evaluate it using these specific criteria: ${PAGE_TYPE_CRITERIA[pageTypeHint!] ?? PAGE_TYPE_CRITERIA.other}`;
-
-  const prompt = `You are a senior UX designer. Analyze this website screenshot and HTML.
-
-${criteriaNote}
-
-HTML snippet:
-${html.slice(0, 12000)}
-
-Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
-{
-  ${isAutoDetect ? '"pageType": "<one of: landing|ecommerce|blog|dashboard|form|portfolio|other>",\n  ' : ''}"good": [
-    { "text": "<specific strength>", "priority": "<high|medium>" }
-  ],
-  "bad": [
-    { "text": "<specific UX problem, be concrete and actionable>", "priority": "<critical|high|medium>" }
-  ],
-  "qualitative": {
-    "visualDesign": { "score": <1-10>, "notes": "<one specific sentence about typography, colors, visual hierarchy>" },
-    "navigation": { "score": <1-10>, "notes": "<one specific sentence about menu, wayfinding, structure>" },
-    "contentClarity": { "score": <1-10>, "notes": "<one specific sentence about headlines, readability, info architecture>" },
-    "callsToAction": { "score": <1-10>, "notes": "<one specific sentence about button visibility, clarity of next steps>" },
-    "trustCredibility": { "score": <1-10>, "notes": "<one specific sentence about trust signals, social proof, professionalism>" }
-  }
-}
-Include 3-6 items in good and bad. Order bad items by priority (critical first). Use "critical" only for issues that significantly block users or hurt conversions.`;
-
-  let claudeGood: PrioritizedItem[] = [];
-  let claudeBad: PrioritizedItem[] = [];
-  let detectedPageType: string | undefined;
-  let aiAvailable = false;
-  let claudeQualitative: AnalysisResult['qualitative'] = {
-    visualDesign: { score: 5, notes: 'Analysis unavailable' },
-    navigation: { score: 5, notes: 'Analysis unavailable' },
-    contentClarity: { score: 5, notes: 'Analysis unavailable' },
-    callsToAction: { score: 5, notes: 'Analysis unavailable' },
-    trustCredibility: { score: 5, notes: 'Analysis unavailable' },
-  };
-
-  try {
-    const claudeResponse = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: 'image/png', data: imageBase64 },
-            },
-            { type: 'text', text: prompt },
-          ],
-        },
-      ],
-    });
-
-    const textBlock = claudeResponse.content.find((b) => b.type === 'text');
-    const rawText = textBlock?.type === 'text' ? textBlock.text : '{}';
-    // Extract JSON object robustly (handles markdown fences and leading text)
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : '{}';
-    const parsed = JSON.parse(jsonStr);
-    const toItems = (arr: unknown[]): PrioritizedItem[] =>
-      arr.map(item =>
-        typeof item === 'string'
-          ? { text: item, priority: 'high' as const }
-          : { text: String((item as Record<string, unknown>).text ?? ''), priority: ((item as Record<string, unknown>).priority ?? 'high') as PrioritizedItem['priority'] }
-      );
-    claudeGood = Array.isArray(parsed.good) ? toItems(parsed.good) : [];
-    claudeBad = Array.isArray(parsed.bad) ? toItems(parsed.bad) : [];
-    detectedPageType = parsed.pageType;
-    if (parsed.qualitative) claudeQualitative = parsed.qualitative;
-    aiAvailable = true;
-  } catch (err) {
-    console.error('Claude analysis failed:', err);
-    console.error('Raw Claude response may have been unparseable');
-  }
-
-  const pageType = (pageTypeHint || detectedPageType || 'other') as PageType;
-
-  // ── Step 4: Claude navigation analysis ───────────────────────────────────
+  // ── Step 4: Navigation analysis ───────────────────────────────────────────
   let navigationAnalysis: NavigationAnalysis | undefined;
-  if (navScreenshotBuffer && navScreenshotPath) {
-    const navTypeExtra = NAV_TYPE_EXTRA[pageType] ?? '';
-    const navPrompt = `You are a senior UX/navigation expert. You are given ${navMobileBuffer ? 'TWO screenshots: (1) desktop navigation at 1280px wide, (2) mobile navigation at 375px wide' : 'a desktop navigation screenshot at 1280px wide'}.
-
-Score the navigation 1-10 based on these specific criteria:
-- Link visibility: are nav links readable with sufficient contrast and legible font size?
-- Menu structure: 4-7 top-level items is ideal; 8+ causes overwhelm, 1-3 may lack structure
-- Home/logo: is there a clear logo or home link in the top-left area?
-- CTA prominence: is there a visually distinct call-to-action button (different color/style) in the nav?
-- Visual hierarchy: can users tell what is primary vs secondary navigation?
-- Active/current state: does the nav visually indicate where the user currently is?
-- Mobile menu: is there a visible hamburger icon or mobile menu trigger at 375px?
-${navTypeExtra ? `\nAdditional criteria for this ${pageType} page:\n${navTypeExtra}` : ''}
-Scoring guide: 9-10 = 7/7 criteria met, 7-8 = 5-6 met, 5-6 = 3-4 met, 3-4 = 1-2 met, 1-2 = none met.
-
-Return ONLY valid JSON (no markdown, no explanation):
-{
-  "score": <1-10>,
-  "notes": "<one sentence summarizing the overall navigation quality>",
-  "issues": ["2-5 specific problems referencing the criteria above"],
-  "recommendations": ["2-5 concrete actionable improvements"]
-}`;
-
-    try {
-      type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: 'image/png'; data: string } };
-      type TextBlock = { type: 'text'; text: string };
-      const content: (ImageBlock | TextBlock)[] = [
-        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: navScreenshotBuffer.toString('base64') } },
-      ];
-      if (navMobileBuffer) {
-        content.push({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: navMobileBuffer.toString('base64') } });
-      }
-      content.push({ type: 'text', text: navPrompt });
-
-      const navResponse = await client.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content }],
-      });
-      const navTextBlock = navResponse.content.find((b) => b.type === 'text');
-      const navRaw = navTextBlock?.type === 'text' ? navTextBlock.text : '{}';
-      const navJsonMatch = navRaw.match(/\{[\s\S]*\}/);
-      const navParsed = JSON.parse(navJsonMatch ? navJsonMatch[0] : '{}');
-      if (navParsed.score) {
-        navigationAnalysis = {
-          screenshotPath: navScreenshotPath,
-          ...(navMobileScreenshotPath && { mobileScreenshotPath: navMobileScreenshotPath }),
-          score: navParsed.score,
-          notes: navParsed.notes ?? '',
-          issues: Array.isArray(navParsed.issues) ? navParsed.issues : [],
-          recommendations: Array.isArray(navParsed.recommendations) ? navParsed.recommendations : [],
-        };
-      }
-    } catch (err) {
-      console.error('Claude nav analysis failed:', err);
-    }
+  if (navScreenshotPath) {
+    navigationAnalysis = analyzeNavigationHeuristic(html, pageType, navScreenshotPath, navMobileScreenshotPath);
   }
 
-  // ── Step 5: Predicted attention heatmap ──────────────────────────────────
-  let heatmap: AnalysisResult['heatmap'] = undefined;
-  try {
-    const heatmapPrompt = `You are a UX expert predicting where users look on this webpage in the first 5 seconds.
+  // ── Step 5: Attention heatmap (F-pattern) ─────────────────────────────────
+  const heatmap = generateHeatmapZones(pageType);
 
-Identify 8-12 attention zones based on:
-- Visual weight: large or high-contrast elements draw the eye first
-- F-pattern / Z-pattern reading behavior (top-left, headline, hero area)
-- CTA buttons and prominent interactive elements
-- Images, especially faces, heroes, or product shots
-- H1 / H2 headlines
-- Navigation bar items
+  // ── Step 6: Typography analysis ───────────────────────────────────────────
+  const typographyAnalysis = analyzeTypographyHeuristic(html);
 
-Return ONLY valid JSON (no markdown):
-{
-  "zones": [
-    { "x": <0-100>, "y": <0-100>, "radius": <5-20>, "intensity": <0.3-1.0>, "reason": "<brief label>" }
-  ]
-}
-Coordinates are percentages: x=0,y=0 is top-left; x=100,y=100 is bottom-right. The screenshot is 1280x800px viewport.`;
+  // ── Step 7: First impression analysis ────────────────────────────────────
+  const firstImpressionAnalysis = analyzeFirstImpressionHeuristic(html, lighthouseData, pageType);
 
-    const hmResponse = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 800,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
-          { type: 'text', text: heatmapPrompt },
-        ],
-      }],
-    });
-    const hmText = hmResponse.content.find(b => b.type === 'text');
-    const hmRaw = hmText?.type === 'text' ? hmText.text : '{}';
-    const hmJson = hmRaw.match(/\{[\s\S]*\}/);
-    const hmParsed = JSON.parse(hmJson ? hmJson[0] : '{}');
-    if (Array.isArray(hmParsed.zones) && hmParsed.zones.length > 0) {
-      heatmap = { zones: hmParsed.zones };
-    }
-  } catch (err) {
-    console.error('Heatmap generation failed:', err);
-  }
+  // ── Step 8: Copywriting analysis ─────────────────────────────────────────
+  const copywritingAnalysis = analyzeCopywritingHeuristic(html, pageType);
 
-  // ── Step 6: Typography & Readability ─────────────────────────────────────
-  let typographyAnalysis: TypographyAnalysis | undefined;
-  try {
-    const typoPrompt = `You are a senior typography and readability expert. Analyze this webpage screenshot and HTML.
-
-Evaluate these specific criteria:
-- Heading hierarchy: Is there a clear H1? Do H2/H3 headings follow a logical visual scale?
-- Font legibility: Are body fonts appropriately sized (≥16px), with good contrast?
-- Line length: Is body text constrained to ~45-75 characters per line for readability?
-- Line height: Does text have sufficient breathing room (line-height ≥ 1.4)?
-- Text density: Is there appropriate whitespace between sections, or is content cramped?
-- Typographic consistency: Are fonts used consistently, or is there a mix of many styles?
-
-HTML snippet:
-${html.slice(0, 10000)}
-
-Return ONLY valid JSON (no markdown):
-{
-  "score": <1-10>,
-  "notes": "<one sentence summarizing typography quality>",
-  "issues": ["2-5 specific typography/readability problems found"],
-  "recommendations": ["2-5 concrete actionable improvements"]
-}`;
-
-    const typoResponse = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 800,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
-          { type: 'text', text: typoPrompt },
-        ],
-      }],
-    });
-    const typoText = typoResponse.content.find(b => b.type === 'text');
-    const typoRaw = typoText?.type === 'text' ? typoText.text : '{}';
-    const typoJson = typoRaw.match(/\{[\s\S]*\}/);
-    const typoParsed = JSON.parse(typoJson ? typoJson[0] : '{}');
-    if (typoParsed.score) {
-      typographyAnalysis = {
-        score: typoParsed.score,
-        notes: typoParsed.notes ?? '',
-        issues: Array.isArray(typoParsed.issues) ? typoParsed.issues : [],
-        recommendations: Array.isArray(typoParsed.recommendations) ? typoParsed.recommendations : [],
-      };
-    }
-  } catch (err) {
-    console.error('Typography analysis failed:', err);
-  }
-
-  // ── Step 7: First Impression (Above the Fold) ─────────────────────────────
-  let firstImpressionAnalysis: FirstImpressionAnalysis | undefined;
-  try {
-    const firstImpressionPrompt = `You are a conversion rate optimization expert. This screenshot shows exactly what a user sees in the first 3-5 seconds on this page (1280×800 viewport, no scrolling).
-
-Evaluate the first impression:
-- Is the value proposition immediately clear? Can a new visitor understand what this site offers?
-- Is the primary headline compelling and visible?
-- Is there a clear primary CTA visible above the fold?
-- Does the visual hierarchy guide the eye naturally (headline → subheading → CTA)?
-- Does the hero/banner section communicate trust and professionalism?
-- Is important content competing with visual noise or distractions?
-
-Return ONLY valid JSON (no markdown):
-{
-  "score": <1-10>,
-  "verdict": "<one sentence: what is the overall first impression?>",
-  "strengths": ["2-4 things that work well above the fold"],
-  "issues": ["2-4 problems that hurt the first impression"]
-}`;
-
-    const fiResponse = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 800,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
-          { type: 'text', text: firstImpressionPrompt },
-        ],
-      }],
-    });
-    const fiText = fiResponse.content.find(b => b.type === 'text');
-    const fiRaw = fiText?.type === 'text' ? fiText.text : '{}';
-    const fiJson = fiRaw.match(/\{[\s\S]*\}/);
-    const fiParsed = JSON.parse(fiJson ? fiJson[0] : '{}');
-    if (fiParsed.score) {
-      firstImpressionAnalysis = {
-        score: fiParsed.score,
-        verdict: fiParsed.verdict ?? '',
-        strengths: Array.isArray(fiParsed.strengths) ? fiParsed.strengths : [],
-        issues: Array.isArray(fiParsed.issues) ? fiParsed.issues : [],
-      };
-    }
-  } catch (err) {
-    console.error('First impression analysis failed:', err);
-  }
-
-  // ── Step 8: Copywriting Analysis ──────────────────────────────────────────
-  let copywritingAnalysis: CopywritingAnalysis | undefined;
-  try {
-    const copyPrompt = `You are a senior copywriter and conversion specialist. Analyze the text content of this webpage.
-
-Evaluate the copy across these dimensions:
-- Headline quality: Is the main headline clear, benefit-focused, and compelling?
-- Value proposition: Is it immediately obvious what this product/service does and for whom?
-- Clarity vs jargon: Is the language plain and accessible, or full of buzzwords and corporate speak?
-- Reading level: Is the copy appropriately simple (aim for Grade 8-10 reading level for general audiences)?
-- CTA copy: Are call-to-action buttons/links specific and action-oriented (e.g. "Start free trial" vs "Submit")?
-- Tone consistency: Does the tone stay consistent throughout the page?
-
-HTML text content:
-${html.slice(0, 15000)}
-
-Return ONLY valid JSON (no markdown):
-{
-  "score": <1-10>,
-  "notes": "<one sentence summarizing overall copy quality>",
-  "issues": ["2-5 specific copy problems (e.g. vague headline, jargon, weak CTA text)"],
-  "suggestions": ["2-5 concrete improvements with example rewrites where possible"]
-}`;
-
-    const copyResponse = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      messages: [{
-        role: 'user',
-        content: [{ type: 'text', text: copyPrompt }],
-      }],
-    });
-    const copyText = copyResponse.content.find(b => b.type === 'text');
-    const copyRaw = copyText?.type === 'text' ? copyText.text : '{}';
-    const copyJson = copyRaw.match(/\{[\s\S]*\}/);
-    const copyParsed = JSON.parse(copyJson ? copyJson[0] : '{}');
-    if (copyParsed.score) {
-      copywritingAnalysis = {
-        score: copyParsed.score,
-        notes: copyParsed.notes ?? '',
-        issues: Array.isArray(copyParsed.issues) ? copyParsed.issues : [],
-        suggestions: Array.isArray(copyParsed.suggestions) ? copyParsed.suggestions : [],
-      };
-    }
-  } catch (err) {
-    console.error('Copywriting analysis failed:', err);
-  }
-
-  // ── Step 9: Color Palette & Brand Consistency ─────────────────────────────
-  let colorPaletteAnalysis: ColorPaletteAnalysis | undefined;
-  try {
-    const paletteResponse = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 800,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
-          {
-            type: 'text',
-            text: `Analyze the color palette and brand consistency of this webpage screenshot.
-
-Identify the 3–6 most dominant/prominent colors used (backgrounds, text, buttons, accents). Return them as hex codes.
-
-Evaluate:
-- Color contrast (do text/background combos meet WCAG AA: 4.5:1 for normal text, 3:1 for large)?
-- Color harmony (do the colors work well together)?
-- Brand consistency (is the palette cohesive and intentional, or random)?
-- Number of colors (too many competing colors?)
-
-Return ONLY valid JSON (no markdown):
-{
-  "score": <1-10 overall color quality>,
-  "notes": "<one-sentence overall summary>",
-  "dominantColors": ["#hexcode1", "#hexcode2", ...],
-  "issues": ["<specific problem>", ...],
-  "recommendations": ["<concrete improvement>", ...]
-}`
-          }
-        ]
-      }]
-    });
-    const paletteText = paletteResponse.content.find(b => b.type === 'text');
-    const paletteRaw = paletteText?.type === 'text' ? paletteText.text : '{}';
-    const paletteJson = paletteRaw.match(/\{[\s\S]*\}/);
-    const paletteParsed = JSON.parse(paletteJson ? paletteJson[0] : '{}');
-    if (paletteParsed.score) {
-      colorPaletteAnalysis = {
-        score: paletteParsed.score,
-        notes: paletteParsed.notes ?? '',
-        dominantColors: Array.isArray(paletteParsed.dominantColors) ? paletteParsed.dominantColors : [],
-        issues: Array.isArray(paletteParsed.issues) ? paletteParsed.issues : [],
-        recommendations: Array.isArray(paletteParsed.recommendations) ? paletteParsed.recommendations : [],
-      };
-    }
-  } catch (err) {
-    console.error('Color palette analysis failed:', err);
-  }
+  // ── Step 9: Color palette analysis ───────────────────────────────────────
+  const colorPaletteAnalysis = analyzeColorPaletteHeuristic(html);
 
   // ── Assemble final result ─────────────────────────────────────────────────
   const result: AnalysisResult = {
@@ -613,9 +602,9 @@ Return ONLY valid JSON (no markdown):
     pageType,
     lighthouse: lighthouseData,
     axeViolations,
-    good: claudeGood,
-    bad: claudeBad,
-    qualitative: claudeQualitative,
+    good,
+    bad,
+    qualitative,
     navigationAnalysis,
     typographyAnalysis,
     firstImpressionAnalysis,
@@ -623,7 +612,7 @@ Return ONLY valid JSON (no markdown):
     colorPaletteAnalysis,
     heatmap,
     analyzedAt: new Date().toISOString(),
-    aiAvailable,
+    aiAvailable: true,
   };
 
   return NextResponse.json(result);
